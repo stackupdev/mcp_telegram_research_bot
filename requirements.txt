@@ -1,0 +1,8 @@
+gunicorn
+flask
+joblib
+scikit-learn
+groq
+python-telegram-bot==13.15
+urllib3<2.0
+requests
