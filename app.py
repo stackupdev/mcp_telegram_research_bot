@@ -1,27 +1,168 @@
 import os
+import json
+import arxiv
+from typing import List
 from flask import Flask, render_template, request, jsonify
-import joblib
 from groq import Groq
 from telegram import Update, Bot, ReplyKeyboardMarkup, KeyboardButton
-from telegram.ext import Dispatcher, CommandHandler
+from telegram.ext import Dispatcher, CommandHandler, MessageHandler, Filters
 
-# NOTE: Do NOT set your GROQ_API_KEY in code.
-# Instead, set the GROQ_API_KEY as an environment variable in your Render.com dashboard:
-# - Go to your service > Environment > Add Environment Variable
-# - Key: GROQ_API_KEY, Value: <your_actual_api_key>
-# The Groq client will automatically use this environment variable.
-
+# Flask app initialization
 app = Flask(__name__)
 
+# Telegram bot configuration
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-TELEGRAM_BOT = Bot(token=TELEGRAM_BOT_TOKEN)
-# We'll use a global dispatcher for all updates
-telegram_dispatcher = Dispatcher(TELEGRAM_BOT, None, workers=0, use_context=True)
-# In-memory user_data for session context per user
+TELEGRAM_BOT = Bot(token=TELEGRAM_BOT_TOKEN) if TELEGRAM_BOT_TOKEN else None
+telegram_dispatcher = Dispatcher(TELEGRAM_BOT, None, workers=0, use_context=True) if TELEGRAM_BOT else None
+
+# In-memory user data for session context per user
 user_data = {}
 
+# Research papers directory
+PAPER_DIR = "papers"
+
 # Maximum tokens to allow in conversation history before truncating
-MAX_TOKENS = 4000  # Conservative limit below Groq's 6000 token limit
+MAX_TOKENS = 4000
+
+# Ensure papers directory exists
+os.makedirs(PAPER_DIR, exist_ok=True)
+
+# ============================================================================
+# RESEARCH FUNCTIONALITY (from inquisita_spark)
+# ============================================================================
+
+def search_papers(topic: str, max_results: int = 5) -> List[str]:
+    """
+    Search for papers on arXiv based on a topic and store their information.
+    
+    Args:
+        topic: The topic to search for
+        max_results: Maximum number of results to retrieve (default: 5)
+        
+    Returns:
+        List of paper IDs found in the search
+    """
+    
+    # Use arxiv to find the papers 
+    client = arxiv.Client()
+
+    # Search for the most relevant articles matching the queried topic
+    search = arxiv.Search(
+        query = topic,
+        max_results = max_results,
+        sort_by = arxiv.SortCriterion.Relevance
+    )
+
+    papers = client.results(search)
+    
+    # Create directory for this topic
+    path = os.path.join(PAPER_DIR, topic.lower().replace(" ", "_"))
+    os.makedirs(path, exist_ok=True)
+    
+    file_path = os.path.join(path, "papers_info.json")
+
+    # Try to load existing papers info
+    try:
+        with open(file_path, "r") as json_file:
+            papers_info = json.load(json_file)
+    except (FileNotFoundError, json.JSONDecodeError):
+        papers_info = {}
+
+    # Process each paper and add to papers_info  
+    paper_ids = []
+    for paper in papers:
+        paper_id = paper.entry_id.split('/')[-1]
+        paper_ids.append(paper_id)
+        
+        # Store paper information
+        papers_info[paper_id] = {
+            "title": paper.title,
+            "authors": [author.name for author in paper.authors],
+            "summary": paper.summary,
+            "published": paper.published.isoformat() if paper.published else None,
+            "pdf_url": paper.pdf_url,
+            "entry_id": paper.entry_id,
+            "categories": paper.categories
+        }
+    
+    # Save updated papers info
+    with open(file_path, "w") as json_file:
+        json.dump(papers_info, json_file, indent=2)
+    
+    return paper_ids
+
+def extract_info(paper_id: str) -> str:
+    """
+    Search for information about a specific paper across all topic directories.
+    
+    Args:
+        paper_id: The ID of the paper to look for
+        
+    Returns:
+        JSON string with paper information if found, error message if not found
+    """
+    
+    # Search through all topic directories
+    for topic_dir in os.listdir(PAPER_DIR):
+        topic_path = os.path.join(PAPER_DIR, topic_dir)
+        if os.path.isdir(topic_path):
+            papers_file = os.path.join(topic_path, "papers_info.json")
+            if os.path.exists(papers_file):
+                try:
+                    with open(papers_file, "r") as f:
+                        papers_info = json.load(f)
+                        if paper_id in papers_info:
+                            return json.dumps(papers_info[paper_id], indent=2)
+                except (FileNotFoundError, json.JSONDecodeError):
+                    continue
+    
+    return f"Paper with ID '{paper_id}' not found in any topic directory."
+
+def get_available_folders() -> List[str]:
+    """
+    List all available topic folders in the papers directory.
+    
+    Returns:
+        List of available topic folder names
+    """
+    
+    folders = []
+    if os.path.exists(PAPER_DIR):
+        for item in os.listdir(PAPER_DIR):
+            item_path = os.path.join(PAPER_DIR, item)
+            if os.path.isdir(item_path):
+                folders.append(item)
+    
+    return folders
+
+def get_topic_papers(topic: str) -> str:
+    """
+    Get detailed information about papers on a specific topic.
+    
+    Args:
+        topic: The research topic to retrieve papers for
+        
+    Returns:
+        JSON string with all papers information for the topic
+    """
+    
+    topic_folder = topic.lower().replace(" ", "_")
+    topic_path = os.path.join(PAPER_DIR, topic_folder)
+    papers_file = os.path.join(topic_path, "papers_info.json")
+    
+    if not os.path.exists(papers_file):
+        return f"No papers found for topic '{topic}'. Use search_papers to find papers first."
+    
+    try:
+        with open(papers_file, "r") as f:
+            papers_info = json.load(f)
+            return json.dumps(papers_info, indent=2)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return f"Error reading papers information for topic '{topic}'."
+
+# ============================================================================
+# LLM FUNCTIONALITY (Groq API)
+# ============================================================================
 
 def get_llama_reply(messages: list) -> str:
     try:
@@ -37,8 +178,9 @@ def get_llama_reply(messages: list) -> str:
         
         # Handle token limit errors
         if "413" in error_str and "Request too large" in error_str:
-            # Conversation history too long
             return "⚠️ Your conversation history is too long for the model's token limit. Please use /reset to start a new conversation, or ask a shorter question."
+        
+        return f"⚠️ Error from Groq API: {error_str}"
 
 def get_deepseek_reply(messages: list) -> str:
     try:
@@ -54,13 +196,13 @@ def get_deepseek_reply(messages: list) -> str:
         
         # Handle token limit errors
         if "413" in error_str and "Request too large" in error_str:
-            # Conversation history too long
             return "⚠️ Your conversation history is too long for the model's token limit. Please use /reset to start a new conversation, or ask a shorter question."
         
-        # Handle other API errors
         return f"⚠️ Error from Groq API: {error_str}"
 
-# Telegram command handlers
+# ============================================================================
+# TELEGRAM BOT FUNCTIONALITY
+# ============================================================================
 
 def get_user_data(user_id):
     if user_id not in user_data:
@@ -72,82 +214,91 @@ def truncate_conversation(messages, max_tokens=MAX_TOKENS):
     Automatically truncate conversation history to stay within token limits.
     Uses a simple heuristic of ~4 chars per token for estimation.
     """
+    
     if not messages:
         return messages
-        
-    # Simple estimation: ~4 chars per token
-    total_chars = sum(len(msg["content"]) for msg in messages)
+    
+    # Estimate tokens (rough heuristic: ~4 characters per token)
+    total_chars = sum(len(msg.get('content', '')) for msg in messages)
     estimated_tokens = total_chars // 4
     
-    # If we're under the limit, no need to truncate
     if estimated_tokens <= max_tokens:
         return messages
-        
-    print(f"Truncating conversation: {estimated_tokens} tokens (estimated) exceeds {max_tokens} limit")
     
-    # Keep truncating from the beginning until we're under the limit
-    # Always keep at least the most recent exchange (2 messages)
-    while estimated_tokens > max_tokens and len(messages) > 2:
-        # If first message is system, remove the second message instead
-        if messages and messages[0]["role"] == "system":
-            if len(messages) <= 2:  # Only system + 1 message left
-                break
-            removed = messages.pop(1)
-        else:
-            removed = messages.pop(0)
-            
-        estimated_tokens -= len(removed["content"]) // 4
-        print(f"Removed message: {removed['role']} ({len(removed['content']) // 4} tokens)")
+    # Keep system message if present, and truncate from the beginning
+    truncated = []
+    if messages and messages[0].get('role') == 'system':
+        truncated.append(messages[0])
+        messages = messages[1:]
     
-    # Add a system message indicating truncation if we removed messages
-    if estimated_tokens > max_tokens:
-        truncation_notice = {"role": "system", "content": "[Some earlier messages were removed to stay within token limits]"}
-        if messages and messages[0]["role"] == "system":
-            # Insert after existing system message
-            messages.insert(1, truncation_notice)
-        else:
-            # Insert at beginning
-            messages.insert(0, truncation_notice)
-            
-    return messages
+    # Keep the most recent messages that fit within the token limit
+    chars_count = 0
+    for msg in reversed(messages):
+        msg_chars = len(msg.get('content', ''))
+        if (chars_count + msg_chars) // 4 > max_tokens:
+            break
+        truncated.insert(-1 if truncated and truncated[0].get('role') == 'system' else 0, msg)
+        chars_count += msg_chars
+    
+    return truncated
 
 def send_telegram_message(update, text, reply_markup=None):
     """Split long messages into smaller chunks to avoid Telegram's 4096 character limit"""
-    # Maximum message length for Telegram
-    max_length = 4000  # Slightly less than 4096 to be safe
+    max_length = 4000  # Leave some buffer for safety
     
-    # If the message is short enough, send it as is
     if len(text) <= max_length:
         update.message.reply_text(text, reply_markup=reply_markup)
         return
-        
-    # Otherwise, split it into chunks
-    chunks = [text[i:i+max_length] for i in range(0, len(text), max_length)]
     
-    # Send the first chunk with reply_markup
-    update.message.reply_text(chunks[0], reply_markup=reply_markup)
+    # Split message into chunks
+    chunks = []
+    current_chunk = ""
     
-    # Send the rest with a prefix, but no reply_markup
-    prefix = "(continued) "
-    for chunk in chunks[1:]:
-        if len(chunk) + len(prefix) <= max_length:
-            update.message.reply_text(prefix + chunk)
+    for line in text.split('\n'):
+        if len(current_chunk + line + '\n') > max_length:
+            if current_chunk:
+                chunks.append(current_chunk.strip())
+                current_chunk = line + '\n'
+            else:
+                # Single line is too long, split it
+                chunks.append(line[:max_length])
+                current_chunk = line[max_length:] + '\n'
         else:
-            update.message.reply_text(chunk)
+            current_chunk += line + '\n'
+    
+    if current_chunk:
+        chunks.append(current_chunk.strip())
+    
+    # Send all chunks except the last one without reply_markup
+    for chunk in chunks[:-1]:
+        update.message.reply_text(chunk)
+    
+    # Send the last chunk with reply_markup if provided
+    update.message.reply_text(chunks[-1], reply_markup=reply_markup)
 
 def start(update, context):
+    user_id = update.effective_user.id
+    user_name = update.effective_user.first_name or "there"
+    
     # Create custom keyboard with main options
     keyboard = [
         [KeyboardButton("Chat with LLAMA"), KeyboardButton("Chat with Deepseek")],
+        [KeyboardButton("Search Papers"), KeyboardButton("View Topics")],
         [KeyboardButton("Reset Conversation")]
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     
     send_telegram_message(
         update,
-        "Welcome to GroqSeeker_Bot!\n\n" +
-        "Select an option below or type your question directly.\n\n" +
-        "You can also use commands:\n" +
+        f"Welcome to Inquisita Spark Research Bot, {user_name}!\n\n" +
+        "🔬 I can help you with:\n" +
+        "• Academic paper research via ArXiv\n" +
+        "• AI conversations with LLAMA & Deepseek\n" +
+        "• Organizing research by topics\n\n" +
+        "Select an option below or use commands:\n" +
+        "/search <topic> - Search academic papers\n" +
+        "/papers <topic> - View papers for a topic\n" +
+        "/topics - List available research topics\n" +
         "/llama <question> - Chat with LLAMA\n" +
         "/deepseek <question> - Chat with Deepseek\n",
         reply_markup=reply_markup
@@ -155,10 +306,135 @@ def start(update, context):
 
 def help_command(update, context):
     send_telegram_message(update,
-        "Commands:\n" +
+        "🤖 Inquisita Spark Research Bot Commands:\n\n" +
+        "📚 Research Commands:\n" +
+        "/search <topic> - Search ArXiv papers\n" +
+        "/papers <topic> - View papers for topic\n" +
+        "/paper <id> - Get specific paper details\n" +
+        "/topics - List available topics\n\n" +
+        "🧠 AI Chat Commands:\n" +
         "/llama <question> - Chat with LLAMA AI\n" +
-        "/deepseek <question> - Chat with Deepseek AI\n"
+        "/deepseek <question> - Chat with Deepseek AI\n" +
+        "/reset - Reset conversation history\n"
     )
+
+def search_command(update, context):
+    user_id = update.effective_user.id
+    
+    if not context.args:
+        send_telegram_message(update, "Please provide a research topic.\nUsage: /search machine learning")
+        return
+    
+    topic = ' '.join(context.args)
+    send_telegram_message(update, f"🔍 Searching ArXiv for papers on '{topic}'...")
+    
+    try:
+        paper_ids = search_papers(topic, max_results=5)
+        if paper_ids:
+            response = f"✅ Found {len(paper_ids)} papers on '{topic}':\n\n"
+            
+            # Get paper details for display
+            topic_info = get_topic_papers(topic)
+            papers_data = json.loads(topic_info)
+            
+            for i, paper_id in enumerate(paper_ids[:3], 1):  # Show first 3
+                paper = papers_data.get(paper_id, {})
+                response += f"{i}. **{paper.get('title', 'Unknown Title')}**\n"
+                response += f"   ID: {paper_id}\n"
+                response += f"   Authors: {', '.join(paper.get('authors', [])[:2])}{'...' if len(paper.get('authors', [])) > 2 else ''}\n\n"
+            
+            if len(paper_ids) > 3:
+                response += f"... and {len(paper_ids) - 3} more papers.\n\n"
+            
+            response += f"Use `/papers {topic}` to see all papers or `/paper <id>` for details."
+            send_telegram_message(update, response)
+        else:
+            send_telegram_message(update, f"❌ No papers found for '{topic}'. Try a different search term.")
+    except Exception as e:
+        print(f"Error in search_command: {str(e)}")
+        send_telegram_message(update, f"❌ Error searching papers: {str(e)}")
+
+def papers_command(update, context):
+    if not context.args:
+        send_telegram_message(update, "Please provide a topic.\nUsage: /papers machine learning")
+        return
+    
+    topic = ' '.join(context.args)
+    
+    try:
+        papers_info = get_topic_papers(topic)
+        if papers_info.startswith("No papers found") or papers_info.startswith("Error reading"):
+            send_telegram_message(update, f"❌ {papers_info}")
+            return
+        
+        papers_data = json.loads(papers_info)
+        if not papers_data:
+            send_telegram_message(update, f"No papers found for topic '{topic}'.")
+            return
+        
+        response = f"📚 Papers on '{topic}' ({len(papers_data)} found):\n\n"
+        
+        for i, (paper_id, paper) in enumerate(papers_data.items(), 1):
+            response += f"{i}. **{paper.get('title', 'Unknown Title')}**\n"
+            response += f"   ID: {paper_id}\n"
+            response += f"   Authors: {', '.join(paper.get('authors', [])[:2])}{'...' if len(paper.get('authors', [])) > 2 else ''}\n"
+            response += f"   Published: {paper.get('published', 'Unknown')[:10]}\n\n"
+        
+        response += "Use `/paper <id>` to get detailed information about a specific paper."
+        send_telegram_message(update, response)
+        
+    except Exception as e:
+        print(f"Error in papers_command: {str(e)}")
+        send_telegram_message(update, f"❌ Error retrieving papers: {str(e)}")
+
+def paper_command(update, context):
+    if not context.args:
+        send_telegram_message(update, "Please provide a paper ID.\nUsage: /paper 2301.07041")
+        return
+    
+    paper_id = context.args[0]
+    
+    try:
+        paper_info = extract_info(paper_id)
+        if paper_info.startswith("Paper with ID"):
+            send_telegram_message(update, f"❌ {paper_info}")
+            return
+        
+        paper_data = json.loads(paper_info)
+        
+        response = f"📄 **{paper_data.get('title', 'Unknown Title')}**\n\n"
+        response += f"**Authors:** {', '.join(paper_data.get('authors', []))}\n\n"
+        response += f"**Published:** {paper_data.get('published', 'Unknown')[:10]}\n\n"
+        response += f"**Categories:** {', '.join(paper_data.get('categories', []))}\n\n"
+        response += f"**Summary:**\n{paper_data.get('summary', 'No summary available.')}\n\n"
+        response += f"**PDF:** {paper_data.get('pdf_url', 'Not available')}\n"
+        response += f"**ArXiv:** {paper_data.get('entry_id', 'Not available')}"
+        
+        send_telegram_message(update, response)
+        
+    except Exception as e:
+        print(f"Error in paper_command: {str(e)}")
+        send_telegram_message(update, f"❌ Error retrieving paper details: {str(e)}")
+
+def topics_command(update, context):
+    try:
+        folders = get_available_folders()
+        if folders:
+            response = "📂 Available research topics:\n\n"
+            for i, folder in enumerate(folders, 1):
+                # Convert folder name back to readable format
+                topic_name = folder.replace("_", " ").title()
+                response += f"{i}. {topic_name}\n"
+            
+            response += f"\nUse `/papers <topic>` to view papers for a specific topic."
+        else:
+            response = "No research topics found. Use `/search <topic>` to start researching!"
+        
+        send_telegram_message(update, response)
+        
+    except Exception as e:
+        print(f"Error in topics_command: {str(e)}")
+        send_telegram_message(update, f"❌ Error retrieving topics: {str(e)}")
 
 def llama_command(update, context):
     user_id = update.effective_user.id
@@ -228,57 +504,65 @@ def deepseek_command(update, context):
         
     send_telegram_message(update, reply)
 
-
 def reset_command(update, context):
     user_id = update.effective_user.id
     udata = get_user_data(user_id)
     udata.pop('llama_history', None)
     udata.pop('deepseek_history', None)
-    send_telegram_message(update, "Your chat history has been reset.")
+    send_telegram_message(update, "✅ Your chat history has been reset.")
 
-# Add handler for regular text messages
 def message_handler(update, context):
     user_id = update.effective_user.id
     udata = get_user_data(user_id)
     text = update.message.text
     
-    # Process based on the button/text content
+    # Handle keyboard button presses
     if text == "Chat with LLAMA":
         context.args = ["Hi,", "I'd", "like", "to", "chat"]
         return llama_command(update, context)
     elif text == "Chat with Deepseek":
         context.args = ["Hi,", "I'd", "like", "to", "chat"]
         return deepseek_command(update, context)
+    elif text == "Search Papers":
+        send_telegram_message(update, "Please enter a research topic to search for.\nExample: machine learning, quantum computing, neural networks")
+        return
+    elif text == "View Topics":
+        return topics_command(update, context)
     elif text == "Reset Conversation":
         return reset_command(update, context)
-
     
     # Default: treat as a question for the last used model or LLAMA
     model = udata.get('last_model', 'llama')
     if model == 'deepseek':
-        # Set args directly instead of modifying the message text
         context.args = text.split()
         return deepseek_command(update, context)
-    else:  # Default to LLAMA
-        # Set args directly instead of modifying the message text
+    else:
         context.args = text.split()
         return llama_command(update, context)
 
 # Register handlers with the dispatcher
-telegram_dispatcher.add_handler(CommandHandler("start", start))
-telegram_dispatcher.add_handler(CommandHandler("help", help_command))
-telegram_dispatcher.add_handler(CommandHandler("llama", llama_command))
-telegram_dispatcher.add_handler(CommandHandler("deepseek", deepseek_command))
-telegram_dispatcher.add_handler(CommandHandler("reset", reset_command))
-# Add handler for regular text messages (must be added last)
-from telegram.ext import MessageHandler, Filters
-telegram_dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, message_handler))
+if telegram_dispatcher:
+    telegram_dispatcher.add_handler(CommandHandler("start", start))
+    telegram_dispatcher.add_handler(CommandHandler("help", help_command))
+    telegram_dispatcher.add_handler(CommandHandler("search", search_command))
+    telegram_dispatcher.add_handler(CommandHandler("papers", papers_command))
+    telegram_dispatcher.add_handler(CommandHandler("paper", paper_command))
+    telegram_dispatcher.add_handler(CommandHandler("topics", topics_command))
+    telegram_dispatcher.add_handler(CommandHandler("llama", llama_command))
+    telegram_dispatcher.add_handler(CommandHandler("deepseek", deepseek_command))
+    telegram_dispatcher.add_handler(CommandHandler("reset", reset_command))
+    # Add handler for regular text messages (must be added last)
+    telegram_dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, message_handler))
 
-@app.route("/telegram_webhook", methods=["POST"])
+# ============================================================================
+# FLASK WEB ROUTES
+# ============================================================================
+
+@app.route('/webhook', methods=['POST'])
 def telegram_webhook():
     try:
         data = request.get_json(force=True)
-        print("Received Telegram update:", data)  # Debug incoming updates
+        print("Received Telegram update:", data)
         
         # Check if we have a valid token
         if not TELEGRAM_BOT_TOKEN:
@@ -287,7 +571,7 @@ def telegram_webhook():
             
         update = Update.de_json(data, TELEGRAM_BOT)
         if update:
-            print(f"Processing update ID: {update.update_id}, type: {'message' if update.message else 'callback_query' if update.callback_query else 'unknown'}")
+            print(f"Processing update ID: {update.update_id}")
             telegram_dispatcher.process_update(update)
         else:
             print("WARNING: Received invalid update format from Telegram")
@@ -295,95 +579,76 @@ def telegram_webhook():
         return jsonify(success=True)
     except Exception as e:
         print(f"ERROR in telegram_webhook: {str(e)}")
-        import traceback
-        print(traceback.format_exc())
         return jsonify(success=False, error=str(e)), 500
 
 @app.route('/')
 def index():
     return render_template('index.html')
 
-@app.route('/telegram')
-def telegram_info():
-    # Check webhook status with Telegram API
-    webhook_status = "Unknown"
-    try:
-        # Get webhook info from Telegram API
-        import requests
-        
-        token = os.environ.get('TELEGRAM_BOT_TOKEN')
-        if not token:
-            webhook_status = "Error: TELEGRAM_BOT_TOKEN not set"
-        else:
-            response = requests.get(f"https://api.telegram.org/bot{token}/getWebhookInfo")
-            if response.status_code == 200:
-                webhook_info = response.json()
-                if webhook_info.get("ok"):
-                    webhook_data = webhook_info.get("result", {})
-                    if webhook_data.get("url"):
-                        webhook_status = "Active: " + webhook_data.get("url")
-                        # Check for pending updates
-                        pending = webhook_data.get("pending_update_count", 0)
-                        if pending > 0:
-                            webhook_status += f" ({pending} pending updates)"
-                    else:
-                        webhook_status = "Not set"
-                else:
-                    webhook_status = f"Error: {webhook_info.get('description', 'Unknown error')}"
-            else:
-                webhook_status = f"Error: HTTP {response.status_code}"
-    except Exception as e:
-        webhook_status = f"Error checking webhook: {str(e)}"
-    
-    return render_template('telegram.html', 
-                          status="GroqSeeker_Bot is ready to use in Telegram", 
-                          webhook_status=webhook_status)
-
-@app.route("/main",methods=["GET","POST"])
+@app.route('/main')
 def main():
-    q = request.form.get("q")
-    # db
-    return(render_template("main.html"))
+    return render_template('main.html')
 
-@app.route("/deepseek",methods=["GET","POST"])
+@app.route('/research')
+def research():
+    return render_template('research.html')
+
+@app.route('/search', methods=['POST'])
+def web_search():
+    topic = request.form.get('topic')
+    if not topic:
+        return render_template('research.html', error="Please provide a research topic.")
+    
+    try:
+        paper_ids = search_papers(topic, max_results=10)
+        papers_info = get_topic_papers(topic)
+        papers_data = json.loads(papers_info) if not papers_info.startswith("No papers") else {}
+        
+        return render_template('search_results.html', 
+                             topic=topic, 
+                             papers=papers_data, 
+                             paper_count=len(papers_data))
+    except Exception as e:
+        return render_template('research.html', error=f"Error searching papers: {str(e)}")
+
+@app.route('/topics')
+def web_topics():
+    try:
+        folders = get_available_folders()
+        topics_data = {}
+        
+        for folder in folders:
+            topic_name = folder.replace("_", " ").title()
+            papers_info = get_topic_papers(folder.replace("_", " "))
+            if not papers_info.startswith("No papers"):
+                papers_data = json.loads(papers_info)
+                topics_data[topic_name] = len(papers_data)
+        
+        return render_template('topics.html', topics=topics_data)
+    except Exception as e:
+        return render_template('topics.html', error=f"Error loading topics: {str(e)}")
+
+@app.route('/llama')
+def llama():
+    return render_template("llama.html")
+
+@app.route('/llama_reply', methods=["POST"])
+def llama_reply():
+    q = request.form.get("q")
+    messages = [{"role": "user", "content": q}]
+    reply = get_llama_reply(messages)
+    return render_template("llama_reply.html", r=reply)
+
+@app.route('/deepseek')
 def deepseek():
     return render_template("deepseek.html")
 
-@app.route("/deepseek_reply", methods=["GET", "POST"])
+@app.route('/deepseek_reply', methods=["POST"])
 def deepseek_reply():
     q = request.form.get("q")
-    client = Groq()
-    completion_ds = client.chat.completions.create(
-        model="deepseek-r1-distill-llama-70b",
-        messages=[
-            {
-                "role": "user",
-                "content": q
-           }
-        ]
-    )
-    return(render_template("deepseek_reply.html", r=completion_ds.choices[0].message.content))
-
-@app.route("/llama",methods=["GET","POST"])
-def llama():
-    return(render_template("llama.html"))
-
-@app.route("/llama_reply",methods=["GET","POST"])
-def llama_reply():
-    q = request.form.get("q")
-    # load model
-    client = Groq()
-    completion = client.chat.completions.create(
-        model="llama-3.1-8b-instant",
-        messages=[
-            {
-                "role": "user",
-                "content": q
-            }
-        ]
-    )
-    return(render_template("llama_reply.html",r=completion.choices[0].message.content))
+    messages = [{"role": "user", "content": q}]
+    reply = get_deepseek_reply(messages)
+    return render_template("deepseek_reply.html", r=reply)
 
 if __name__ == "__main__":
-    app.run()
-
+    app.run(debug=True)
