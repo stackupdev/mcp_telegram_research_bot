@@ -60,37 +60,6 @@ def get_deepseek_reply(messages: list) -> str:
         # Handle other API errors
         return f"⚠️ Error from Groq API: {error_str}"
 
-def predict_dbs(usdsgd: float) -> str:
-    try:
-        # Get absolute path to the model file
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        model_path = os.path.join(current_dir, 'dbs.jl')
-        
-        # Log the path for debugging
-        print(f"Looking for model at: {model_path}")
-        
-        # Check if model file exists
-        if not os.path.exists(model_path):
-            print(f"ERROR: Model file not found at {model_path}")
-            return "Prediction model not found. Please check server logs."
-            
-        # Try to load the model
-        print("Loading model...")
-        dbs_model = joblib.load(model_path)
-        
-        # Make prediction
-        print(f"Making prediction with USD/SGD rate: {usdsgd}")
-        pred = dbs_model.predict([[usdsgd]])[0]
-        # Convert numpy array value to Python float before formatting
-        pred_float = float(pred)
-        return f"Predicted DBS share price: {pred_float:.2f} SGD"
-        
-    except Exception as e:
-        print(f"ERROR in predict_dbs: {str(e)}")
-        import traceback
-        print(traceback.format_exc())
-        return f"Error making prediction: {str(e)}"
-
 # Telegram command handlers
 
 def get_user_data(user_id):
@@ -170,7 +139,7 @@ def start(update, context):
     # Create custom keyboard with main options
     keyboard = [
         [KeyboardButton("Chat with LLAMA"), KeyboardButton("Chat with Deepseek")],
-        [KeyboardButton("Predict DBS Price"), KeyboardButton("Reset Conversation")]
+        [KeyboardButton("Reset Conversation")]
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     
@@ -180,8 +149,7 @@ def start(update, context):
         "Select an option below or type your question directly.\n\n" +
         "You can also use commands:\n" +
         "/llama <question> - Chat with LLAMA\n" +
-        "/deepseek <question> - Chat with Deepseek\n" +
-        "/predict <usdsgd> - Predict DBS price",
+        "/deepseek <question> - Chat with Deepseek\n",
         reply_markup=reply_markup
     )
 
@@ -189,8 +157,7 @@ def help_command(update, context):
     send_telegram_message(update,
         "Commands:\n" +
         "/llama <question> - Chat with LLAMA AI\n" +
-        "/deepseek <question> - Chat with Deepseek AI\n" +
-        "/predict <usdsgd> - Predict DBS share price\n"
+        "/deepseek <question> - Chat with Deepseek AI\n"
     )
 
 def llama_command(update, context):
@@ -261,33 +228,6 @@ def deepseek_command(update, context):
         
     send_telegram_message(update, reply)
 
-def predict_command(update, context):
-    user_id = update.effective_user.id
-    udata = get_user_data(user_id)
-    
-    # Debug print
-    print(f"Predict command received from user {user_id}")
-    print(f"Args: {context.args}")
-    
-    if not context.args:
-        last_rate = udata.get('last_usdsgd')
-        if last_rate:
-            send_telegram_message(update, f"Your last USD/SGD rate was: {last_rate}")
-        else:
-            send_telegram_message(update, "Please provide the USD/SGD rate after /predict.")
-        return
-    try:
-        usdsgd = float(context.args[0])
-        print(f"Valid USD/SGD rate provided: {usdsgd}")
-        udata['last_usdsgd'] = usdsgd
-        reply = predict_dbs(usdsgd)
-    except ValueError as e:
-        print(f"Invalid input: {context.args[0]} - {str(e)}")
-        reply = "Invalid input. Please provide a valid number for USD/SGD."
-    except Exception as e:
-        print(f"Error in predict_command: {str(e)}")
-        reply = f"Error processing prediction: {str(e)}"
-    update.message.reply_text(reply)
 
 def reset_command(update, context):
     user_id = update.effective_user.id
@@ -309,23 +249,9 @@ def message_handler(update, context):
     elif text == "Chat with Deepseek":
         context.args = ["Hi,", "I'd", "like", "to", "chat"]
         return deepseek_command(update, context)
-    elif text == "Predict DBS Price":
-        send_telegram_message(update, "Please enter the USD/SGD rate to predict DBS price.\nFormat: 1.34")
-        udata['expecting_usdsgd'] = True
-        return
     elif text == "Reset Conversation":
         return reset_command(update, context)
-    elif udata.get('expecting_usdsgd', False):
-        # User is expected to provide USD/SGD rate
-        udata['expecting_usdsgd'] = False
-        try:
-            rate = float(text.strip())
-            # Create a context-like object with args
-            context.args = [str(rate)]
-            return predict_command(update, context)
-        except ValueError:
-            send_telegram_message(update, "Invalid input. Please provide a valid number for USD/SGD rate.")
-            return
+
     
     # Default: treat as a question for the last used model or LLAMA
     model = udata.get('last_model', 'llama')
@@ -343,7 +269,6 @@ telegram_dispatcher.add_handler(CommandHandler("start", start))
 telegram_dispatcher.add_handler(CommandHandler("help", help_command))
 telegram_dispatcher.add_handler(CommandHandler("llama", llama_command))
 telegram_dispatcher.add_handler(CommandHandler("deepseek", deepseek_command))
-telegram_dispatcher.add_handler(CommandHandler("predict", predict_command))
 telegram_dispatcher.add_handler(CommandHandler("reset", reset_command))
 # Add handler for regular text messages (must be added last)
 from telegram.ext import MessageHandler, Filters
@@ -458,18 +383,6 @@ def llama_reply():
         ]
     )
     return(render_template("llama_reply.html",r=completion.choices[0].message.content))
-
-@app.route("/dbs",methods=["GET","POST"])
-def dbs():
-    return(render_template("dbs.html"))
-
-@app.route("/prediction",methods=["GET","POST"])
-def prediction():
-    q = float(request.form.get("q"))
-    # Load the trained model
-    model = joblib.load("dbs.jl")
-    pred_value = round(float(model.predict([[q]])[0]), 2)
-    return render_template("prediction.html", r=pred_value)
 
 if __name__ == "__main__":
     app.run()
