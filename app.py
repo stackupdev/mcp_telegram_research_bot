@@ -27,13 +27,147 @@ MAX_TOKENS = 4000
 # Ensure papers directory exists
 os.makedirs(PAPER_DIR, exist_ok=True)
 
-# ========== RESEARCH LOGIC SETUP ==========
-from research_logic import research_processor, generate_research_prompt, create_research_summary
+# ========== MCP CLIENT SETUP ==========
+try:
+    from mcp import MCPClient
+    MCP_SERVER_URL = os.environ.get("MCP_SERVER_URL", "http://localhost:8001")
+    mcp_client = MCPClient(MCP_SERVER_URL)
+except ImportError:
+    mcp_client = None
+    print("[Warning] MCPClient not available. Install 'mcp' package for MCP integration.")
 
 # ============================================================================
-# RESEARCH FUNCTIONALITY (Direct Integration)
+# RESEARCH FUNCTIONALITY (from inquisita_spark)
 # ============================================================================
-# Research functionality is now handled by research_logic.py module
+
+def search_papers(topic: str, max_results: int = 5) -> List[str]:
+    """
+    Search for papers on arXiv based on a topic and store their information.
+    
+    Args:
+        topic: The topic to search for
+        max_results: Maximum number of results to retrieve (default: 5)
+        
+    Returns:
+        List of paper IDs found in the search
+    """
+    
+    # Use arxiv to find the papers 
+    client = arxiv.Client()
+
+    # Search for the most relevant articles matching the queried topic
+    search = arxiv.Search(
+        query = topic,
+        max_results = max_results,
+        sort_by = arxiv.SortCriterion.Relevance
+    )
+
+    papers = client.results(search)
+    
+    # Create directory for this topic
+    path = os.path.join(PAPER_DIR, topic.lower().replace(" ", "_"))
+    os.makedirs(path, exist_ok=True)
+    
+    file_path = os.path.join(path, "papers_info.json")
+
+    # Try to load existing papers info
+    try:
+        with open(file_path, "r") as json_file:
+            papers_info = json.load(json_file)
+    except (FileNotFoundError, json.JSONDecodeError):
+        papers_info = {}
+
+    # Process each paper and add to papers_info  
+    paper_ids = []
+    for paper in papers:
+        paper_id = paper.entry_id.split('/')[-1]
+        paper_ids.append(paper_id)
+        
+        # Store paper information
+        papers_info[paper_id] = {
+            "title": paper.title,
+            "authors": [author.name for author in paper.authors],
+            "summary": paper.summary,
+            "published": paper.published.isoformat() if paper.published else None,
+            "pdf_url": paper.pdf_url,
+            "entry_id": paper.entry_id,
+            "categories": paper.categories
+        }
+    
+    # Save updated papers info
+    with open(file_path, "w") as json_file:
+        json.dump(papers_info, json_file, indent=2)
+    
+    return paper_ids
+
+def extract_info(paper_id: str) -> str:
+    """
+    Search for information about a specific paper across all topic directories.
+    
+    Args:
+        paper_id: The ID of the paper to look for
+        
+    Returns:
+        JSON string with paper information if found, error message if not found
+    """
+    
+    # Search through all topic directories
+    for topic_dir in os.listdir(PAPER_DIR):
+        topic_path = os.path.join(PAPER_DIR, topic_dir)
+        if os.path.isdir(topic_path):
+            papers_file = os.path.join(topic_path, "papers_info.json")
+            if os.path.exists(papers_file):
+                try:
+                    with open(papers_file, "r") as f:
+                        papers_info = json.load(f)
+                        if paper_id in papers_info:
+                            return json.dumps(papers_info[paper_id], indent=2)
+                except (FileNotFoundError, json.JSONDecodeError):
+                    continue
+    
+    return f"Paper with ID '{paper_id}' not found in any topic directory."
+
+def get_available_folders() -> List[str]:
+    """
+    List all available topic folders in the papers directory.
+    
+    Returns:
+        List of available topic folder names
+    """
+    
+    folders = []
+    if os.path.exists(PAPER_DIR):
+        for item in os.listdir(PAPER_DIR):
+            item_path = os.path.join(PAPER_DIR, item)
+            if os.path.isdir(item_path):
+                folders.append(item)
+    
+    return folders
+
+def get_topic_papers(topic: str) -> str:
+    """
+    Get detailed information about papers on a specific topic.
+    
+    Args:
+        topic: The research topic to retrieve papers for
+        
+    Returns:
+        JSON string with all papers information for the topic
+    """
+    
+    topic_folder = topic.lower().replace(" ", "_")
+    topic_path = os.path.join(PAPER_DIR, topic_folder)
+    papers_file = os.path.join(topic_path, "papers_info.json")
+    
+    if not os.path.exists(papers_file):
+        return f"No papers found for topic '{topic}'. Use search_papers to find papers first."
+    
+    try:
+        with open(papers_file, "r") as f:
+            papers_info = json.load(f)
+            return json.dumps(papers_info, indent=2)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return f"Error reading papers information for topic '{topic}'."
 
 # ============================================================================
 # LLM FUNCTIONALITY (Groq API)
@@ -158,7 +292,7 @@ def start(update, context):
     # Create custom keyboard with main options
     keyboard = [
         [KeyboardButton("Chat with LLAMA"), KeyboardButton("Chat with Deepseek")],
-        [KeyboardButton("🔍 Start Research"), KeyboardButton("Research Status")],
+        [KeyboardButton("Search Papers"), KeyboardButton("View Topics")],
         [KeyboardButton("Reset Conversation")]
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
@@ -180,122 +314,61 @@ def start(update, context):
     )
 
 def help_command(update, context):
-    help_text = (
-        "🤖 **Available Commands:**\n\n"
-        "**Chatbots:**\n"
-        "/llama - Chat with LLAMA model\n"
-        "/deepseek - Chat with Deepseek model\n\n"
-        "**Deep Research:**\n"
-        "/research <question> - Generate structured research prompt\n"
-        "/get_prompt - Get full research prompt for AI assistants\n"
-        "/research_status - View current research status\n"
-        "/clear_research - Clear current research data\n\n"
-        "**General:**\n"
-        "/help - Show this help message\n"
-        "/reset - Reset conversation history\n\n"
-        "**How it works:**\n"
-        "1. Use /research with your question\n"
-        "2. Get a structured research prompt\n"
-        "3. Use /get_prompt to copy the full prompt\n"
-        "4. Paste it into Claude, ChatGPT, or similar AI tools\n"
+    send_telegram_message(update,
+        "🤖 Inquisita Spark Research Bot Commands:\n\n" +
+        "📚 Research Commands:\n" +
+        "/search <topic> - Search ArXiv papers\n" +
+        "/papers <topic> - View papers for topic\n" +
+        "/paper <id> - Get specific paper details\n" +
+        "/topics - List available topics\n\n" +
+        "🧠 AI Chat Commands:\n" +
+        "/llama <question> - Chat with LLAMA AI\n" +
+        "/deepseek <question> - Chat with Deepseek AI\n" +
+        "/reset - Reset conversation history\n"
     )
-    send_telegram_message(update, help_text)
 
-def telegram_research_command(update, context):
-    """Handle /research command - generate deep research prompt"""
-    if not context.args:
-        send_telegram_message(update, "Please provide a research question.\nUsage: /research What are the latest developments in AI?")
+def telegram_search_command(update, context):
+    topic = " ".join(context.args)
+    if not mcp_client:
+        update.message.reply_text("MCP client not available.")
         return
-    
-    research_question = ' '.join(context.args)
-    
     try:
-        # Generate research prompt
-        prompt = generate_research_prompt(research_question)
-        summary = create_research_summary(research_question)
-        
-        # Store research question
-        research_processor.update_research_data("question", research_question)
-        research_processor.add_note(f"Research initiated: {research_question}")
-        
-        # Send summary to user
-        send_telegram_message(update, summary)
-        
-        # Send the research prompt (truncated for Telegram)
-        prompt_preview = prompt[:1000] + "...\n\n📋 **Full research prompt generated!**\nUse /get_prompt to get the complete research prompt for use with AI assistants."
-        send_telegram_message(update, f"**Research Prompt Preview:**\n\n{prompt_preview}")
-        
+        result = mcp_client.resource("papers://search", topic=topic, max_results=5)
+        update.message.reply_text(f"Search results for '{topic}':\n{result}")
     except Exception as e:
-        print(f"Error in research_command: {str(e)}")
-        send_telegram_message(update, f"❌ Error generating research prompt: {str(e)}")
+        update.message.reply_text(f"Error: {str(e)}")
 
-def telegram_get_prompt_command(update, context):
-    """Handle /get_prompt command - get full research prompt"""
+def telegram_papers_command(update, context):
+    topic = " ".join(context.args)
+    if not mcp_client:
+        update.message.reply_text("MCP client not available.")
+        return
     try:
-        research_data = research_processor.get_research_data()
-        current_question = research_data.get("question", "")
-        
-        if not current_question:
-            send_telegram_message(update, "No active research question. Use /research <question> first.")
-            return
-        
-        # Generate full prompt
-        full_prompt = generate_research_prompt(current_question)
-        
-        # Split prompt into chunks for Telegram (max 4096 characters per message)
-        chunk_size = 4000
-        chunks = [full_prompt[i:i+chunk_size] for i in range(0, len(full_prompt), chunk_size)]
-        
-        send_telegram_message(update, f"📋 **Full Research Prompt for:** {current_question}\n\n")
-        
-        for i, chunk in enumerate(chunks, 1):
-            send_telegram_message(update, f"**Part {i}/{len(chunks)}:**\n\n{chunk}")
-        
-        send_telegram_message(update, "\n✅ **Complete!** Copy this prompt and use it with Claude, ChatGPT, or other AI assistants with web search capabilities.")
-        
+        result = mcp_client.resource("papers://topic", topic=topic)
+        update.message.reply_text(f"Papers for '{topic}':\n{result}")
     except Exception as e:
-        print(f"Error in get_prompt_command: {str(e)}")
-        send_telegram_message(update, f"❌ Error retrieving research prompt: {str(e)}")
+        update.message.reply_text(f"Error: {str(e)}")
 
-def telegram_research_status_command(update, context):
-    """Handle /research_status command - show current research status"""
+def telegram_paper_command(update, context):
+    paper_id = " ".join(context.args)
+    if not mcp_client:
+        update.message.reply_text("MCP client not available.")
+        return
     try:
-        research_data = research_processor.get_research_data()
-        notes = research_processor.get_research_notes()
-        
-        current_question = research_data.get("question", "None")
-        
-        status_message = f"📊 **Research Status**\n\n"
-        status_message += f"**Current Question:** {current_question}\n\n"
-        
-        if notes:
-            recent_notes = notes.split('\n')[-5:]  # Last 5 notes
-            status_message += f"**Recent Activity:**\n"
-            for note in recent_notes:
-                status_message += f"• {note}\n"
-        else:
-            status_message += "**Activity:** No research activity yet\n"
-        
-        status_message += f"\n**Available Commands:**\n"
-        status_message += f"• /research <question> - Start new research\n"
-        status_message += f"• /get_prompt - Get full research prompt\n"
-        status_message += f"• /clear_research - Clear current research\n"
-        
-        send_telegram_message(update, status_message)
-        
+        result = mcp_client.resource("papers://extract", paper_id=paper_id)
+        update.message.reply_text(f"Paper info for '{paper_id}':\n{result}")
     except Exception as e:
-        print(f"Error in research_status_command: {str(e)}")
-        send_telegram_message(update, f"❌ Error retrieving research status: {str(e)}")
+        update.message.reply_text(f"Error: {str(e)}")
 
-def telegram_clear_research_command(update, context):
-    """Handle /clear_research command - clear current research data"""
+def telegram_topics_command(update, context):
+    if not mcp_client:
+        update.message.reply_text("MCP client not available.")
+        return
     try:
-        research_processor.clear_research()
-        send_telegram_message(update, "✅ Research data cleared. You can start a new research with /research <question>")
-        
+        result = mcp_client.resource("papers://folders")
+        update.message.reply_text(f"Available topics:\n{result}")
     except Exception as e:
-        print(f"Error in clear_research_command: {str(e)}")
-        send_telegram_message(update, f"❌ Error clearing research data: {str(e)}")
+        update.message.reply_text(f"Error: {str(e)}")
 
 def llama_command(update, context):
     user_id = update.effective_user.id
@@ -384,11 +457,11 @@ def message_handler(update, context):
     elif text == "Chat with Deepseek":
         context.args = ["Hi,", "I'd", "like", "to", "chat"]
         return deepseek_command(update, context)
-    elif text == "Start Research":
-        send_telegram_message(update, "Please enter a research question to investigate.\nExample: /research What are the latest developments in quantum computing?\n\nOr just type your question after clicking this button.")
+    elif text == "Search Papers":
+        send_telegram_message(update, "Please enter a research topic to search for.\nExample: machine learning, quantum computing, neural networks")
         return
-    elif text == "Research Status":
-        return telegram_research_status_command(update, context)
+    elif text == "View Topics":
+        return telegram_topics_command(update, context)
     elif text == "Reset Conversation":
         return reset_command(update, context)
     
@@ -405,10 +478,10 @@ def message_handler(update, context):
 if telegram_dispatcher:
     telegram_dispatcher.add_handler(CommandHandler("start", start))
     telegram_dispatcher.add_handler(CommandHandler("help", help_command))
-    telegram_dispatcher.add_handler(CommandHandler("research", telegram_research_command))
-    telegram_dispatcher.add_handler(CommandHandler("get_prompt", telegram_get_prompt_command))
-    telegram_dispatcher.add_handler(CommandHandler("research_status", telegram_research_status_command))
-    telegram_dispatcher.add_handler(CommandHandler("clear_research", telegram_clear_research_command))
+    telegram_dispatcher.add_handler(CommandHandler("search", telegram_search_command))
+    telegram_dispatcher.add_handler(CommandHandler("papers", telegram_papers_command))
+    telegram_dispatcher.add_handler(CommandHandler("paper", telegram_paper_command))
+    telegram_dispatcher.add_handler(CommandHandler("topics", telegram_topics_command))
     telegram_dispatcher.add_handler(CommandHandler("llama", llama_command))
     telegram_dispatcher.add_handler(CommandHandler("deepseek", deepseek_command))
     telegram_dispatcher.add_handler(CommandHandler("reset", reset_command))
@@ -452,75 +525,7 @@ def main():
 
 @app.route('/research')
 def research():
-    # Get current research status if any
-    current_research = None
-    if research_processor.research_data.get('question'):
-        current_research = {
-            'question': research_processor.research_data['question'],
-            'status': 'active'
-        }
-    return render_template('research.html', research_status=current_research)
-
-@app.route('/api/research', methods=['POST'])
-def api_research():
-    question = request.form.get('question')
-    if not question:
-        return render_template('research.html', error="Please provide a research question.")
-    
-    try:
-        # Generate research prompt
-        prompt = generate_research_prompt(question)
-        summary = create_research_summary(question)
-        
-        # Update research processor
-        research_processor.update_research_data("question", question)
-        
-        # Show preview (first 500 characters)
-        prompt_preview = prompt[:500] + "..." if len(prompt) > 500 else prompt
-        
-        current_research = {
-            'question': question,
-            'status': 'active'
-        }
-        
-        return render_template('research.html', 
-                             research_status=current_research,
-                             prompt_preview=prompt_preview,
-                             current_question=question)
-    except Exception as e:
-        return render_template('research.html', error=f"Error generating research prompt: {str(e)}")
-
-@app.route('/api/get_full_prompt', methods=['GET'])
-def api_get_full_prompt():
-    if not research_processor.research_data.get('question'):
-        return render_template('research.html', error="No active research session. Please start a research first.")
-    
-    try:
-        question = research_processor.research_data['question']
-        prompt = generate_research_prompt(question)
-        
-        # Return as plain text for easy copying
-        return f"<pre>{prompt}</pre>", 200, {'Content-Type': 'text/html'}
-    except Exception as e:
-        return render_template('research.html', error=f"Error retrieving prompt: {str(e)}")
-
-@app.route('/api/clear_research', methods=['POST'])
-def api_clear_research():
-    try:
-        # Clear research data
-        research_processor.research_data = {
-            "question": "",
-            "elaboration": "",
-            "subquestions": [],
-            "search_results": {},
-            "extracted_content": {},
-            "final_report": "",
-        }
-        research_processor.notes = []
-        
-        return render_template('research.html', message="Research data cleared successfully.")
-    except Exception as e:
-        return render_template('research.html', error=f"Error clearing research: {str(e)}")
+    return render_template('research.html')
 
 @app.route('/search', methods=['POST'])
 def web_search():
