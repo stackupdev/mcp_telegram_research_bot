@@ -27,15 +27,6 @@ MAX_TOKENS = 4000
 # Ensure papers directory exists
 os.makedirs(PAPER_DIR, exist_ok=True)
 
-# ========== MCP CLIENT SETUP ==========
-try:
-    from mcp import MCPClient
-    MCP_SERVER_URL = os.environ.get("MCP_SERVER_URL", "http://localhost:8001")
-    mcp_client = MCPClient(MCP_SERVER_URL)
-except ImportError:
-    mcp_client = None
-    print("[Warning] MCPClient not available. Install 'mcp' package for MCP integration.")
-
 # ============================================================================
 # RESEARCH FUNCTIONALITY (from inquisita_spark)
 # ============================================================================
@@ -327,48 +318,123 @@ def help_command(update, context):
         "/reset - Reset conversation history\n"
     )
 
-def telegram_search_command(update, context):
-    topic = " ".join(context.args)
-    if not mcp_client:
-        update.message.reply_text("MCP client not available.")
+def search_command(update, context):
+    user_id = update.effective_user.id
+    
+    if not context.args:
+        send_telegram_message(update, "Please provide a research topic.\nUsage: /search machine learning")
         return
+    
+    topic = ' '.join(context.args)
+    send_telegram_message(update, f"🔍 Searching ArXiv for papers on '{topic}'...")
+    
     try:
-        result = mcp_client.resource("papers://search", topic=topic, max_results=5)
-        update.message.reply_text(f"Search results for '{topic}':\n{result}")
+        paper_ids = search_papers(topic, max_results=5)
+        if paper_ids:
+            response = f"✅ Found {len(paper_ids)} papers on '{topic}':\n\n"
+            
+            # Get paper details for display
+            topic_info = get_topic_papers(topic)
+            papers_data = json.loads(topic_info)
+            
+            for i, paper_id in enumerate(paper_ids[:3], 1):  # Show first 3
+                paper = papers_data.get(paper_id, {})
+                response += f"{i}. **{paper.get('title', 'Unknown Title')}**\n"
+                response += f"   ID: {paper_id}\n"
+                response += f"   Authors: {', '.join(paper.get('authors', [])[:2])}{'...' if len(paper.get('authors', [])) > 2 else ''}\n\n"
+            
+            if len(paper_ids) > 3:
+                response += f"... and {len(paper_ids) - 3} more papers.\n\n"
+            
+            response += f"Use `/papers {topic}` to see all papers or `/paper <id>` for details."
+            send_telegram_message(update, response)
+        else:
+            send_telegram_message(update, f"❌ No papers found for '{topic}'. Try a different search term.")
     except Exception as e:
-        update.message.reply_text(f"Error: {str(e)}")
+        print(f"Error in search_command: {str(e)}")
+        send_telegram_message(update, f"❌ Error searching papers: {str(e)}")
 
-def telegram_papers_command(update, context):
-    topic = " ".join(context.args)
-    if not mcp_client:
-        update.message.reply_text("MCP client not available.")
+def papers_command(update, context):
+    if not context.args:
+        send_telegram_message(update, "Please provide a topic.\nUsage: /papers machine learning")
         return
+    
+    topic = ' '.join(context.args)
+    
     try:
-        result = mcp_client.resource("papers://topic", topic=topic)
-        update.message.reply_text(f"Papers for '{topic}':\n{result}")
+        papers_info = get_topic_papers(topic)
+        if papers_info.startswith("No papers found") or papers_info.startswith("Error reading"):
+            send_telegram_message(update, f"❌ {papers_info}")
+            return
+        
+        papers_data = json.loads(papers_info)
+        if not papers_data:
+            send_telegram_message(update, f"No papers found for topic '{topic}'.")
+            return
+        
+        response = f"📚 Papers on '{topic}' ({len(papers_data)} found):\n\n"
+        
+        for i, (paper_id, paper) in enumerate(papers_data.items(), 1):
+            response += f"{i}. **{paper.get('title', 'Unknown Title')}**\n"
+            response += f"   ID: {paper_id}\n"
+            response += f"   Authors: {', '.join(paper.get('authors', [])[:2])}{'...' if len(paper.get('authors', [])) > 2 else ''}\n"
+            response += f"   Published: {paper.get('published', 'Unknown')[:10]}\n\n"
+        
+        response += "Use `/paper <id>` to get detailed information about a specific paper."
+        send_telegram_message(update, response)
+        
     except Exception as e:
-        update.message.reply_text(f"Error: {str(e)}")
+        print(f"Error in papers_command: {str(e)}")
+        send_telegram_message(update, f"❌ Error retrieving papers: {str(e)}")
 
-def telegram_paper_command(update, context):
-    paper_id = " ".join(context.args)
-    if not mcp_client:
-        update.message.reply_text("MCP client not available.")
+def paper_command(update, context):
+    if not context.args:
+        send_telegram_message(update, "Please provide a paper ID.\nUsage: /paper 2301.07041")
         return
+    
+    paper_id = context.args[0]
+    
     try:
-        result = mcp_client.resource("papers://extract", paper_id=paper_id)
-        update.message.reply_text(f"Paper info for '{paper_id}':\n{result}")
+        paper_info = extract_info(paper_id)
+        if paper_info.startswith("Paper with ID"):
+            send_telegram_message(update, f"❌ {paper_info}")
+            return
+        
+        paper_data = json.loads(paper_info)
+        
+        response = f"📄 **{paper_data.get('title', 'Unknown Title')}**\n\n"
+        response += f"**Authors:** {', '.join(paper_data.get('authors', []))}\n\n"
+        response += f"**Published:** {paper_data.get('published', 'Unknown')[:10]}\n\n"
+        response += f"**Categories:** {', '.join(paper_data.get('categories', []))}\n\n"
+        response += f"**Summary:**\n{paper_data.get('summary', 'No summary available.')}\n\n"
+        response += f"**PDF:** {paper_data.get('pdf_url', 'Not available')}\n"
+        response += f"**ArXiv:** {paper_data.get('entry_id', 'Not available')}"
+        
+        send_telegram_message(update, response)
+        
     except Exception as e:
-        update.message.reply_text(f"Error: {str(e)}")
+        print(f"Error in paper_command: {str(e)}")
+        send_telegram_message(update, f"❌ Error retrieving paper details: {str(e)}")
 
-def telegram_topics_command(update, context):
-    if not mcp_client:
-        update.message.reply_text("MCP client not available.")
-        return
+def topics_command(update, context):
     try:
-        result = mcp_client.resource("papers://folders")
-        update.message.reply_text(f"Available topics:\n{result}")
+        folders = get_available_folders()
+        if folders:
+            response = "📂 Available research topics:\n\n"
+            for i, folder in enumerate(folders, 1):
+                # Convert folder name back to readable format
+                topic_name = folder.replace("_", " ").title()
+                response += f"{i}. {topic_name}\n"
+            
+            response += f"\nUse `/papers <topic>` to view papers for a specific topic."
+        else:
+            response = "No research topics found. Use `/search <topic>` to start researching!"
+        
+        send_telegram_message(update, response)
+        
     except Exception as e:
-        update.message.reply_text(f"Error: {str(e)}")
+        print(f"Error in topics_command: {str(e)}")
+        send_telegram_message(update, f"❌ Error retrieving topics: {str(e)}")
 
 def llama_command(update, context):
     user_id = update.effective_user.id
@@ -461,7 +527,7 @@ def message_handler(update, context):
         send_telegram_message(update, "Please enter a research topic to search for.\nExample: machine learning, quantum computing, neural networks")
         return
     elif text == "View Topics":
-        return telegram_topics_command(update, context)
+        return topics_command(update, context)
     elif text == "Reset Conversation":
         return reset_command(update, context)
     
@@ -478,10 +544,10 @@ def message_handler(update, context):
 if telegram_dispatcher:
     telegram_dispatcher.add_handler(CommandHandler("start", start))
     telegram_dispatcher.add_handler(CommandHandler("help", help_command))
-    telegram_dispatcher.add_handler(CommandHandler("search", telegram_search_command))
-    telegram_dispatcher.add_handler(CommandHandler("papers", telegram_papers_command))
-    telegram_dispatcher.add_handler(CommandHandler("paper", telegram_paper_command))
-    telegram_dispatcher.add_handler(CommandHandler("topics", telegram_topics_command))
+    telegram_dispatcher.add_handler(CommandHandler("search", search_command))
+    telegram_dispatcher.add_handler(CommandHandler("papers", papers_command))
+    telegram_dispatcher.add_handler(CommandHandler("paper", paper_command))
+    telegram_dispatcher.add_handler(CommandHandler("topics", topics_command))
     telegram_dispatcher.add_handler(CommandHandler("llama", llama_command))
     telegram_dispatcher.add_handler(CommandHandler("deepseek", deepseek_command))
     telegram_dispatcher.add_handler(CommandHandler("reset", reset_command))
