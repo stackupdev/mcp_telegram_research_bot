@@ -779,6 +779,10 @@ def get_llama_reply(messages: list, enable_tools: bool = True, update=None) -> s
         error_str = str(e)
         print(f"Error in get_llama_reply: {error_str}")
         
+        # Handle function calling errors
+        if "tool_use_failed" in error_str or "Failed to call a function" in error_str:
+            return "I tried to search for research information but encountered a technical issue with the function calling system. Please try rephrasing your question or ask me something else."
+        
         # Handle token limit errors
         if "413" in error_str and "Request too large" in error_str:
             return "⚠️ Your conversation history is too long for the model's token limit. Please use /reset to start a new conversation, or ask a shorter question."
@@ -990,7 +994,7 @@ Format as a simple list, one question per line, without numbering or bullets. Ea
                 {"role": "user", "content": hint_prompt}
             ],
             max_tokens=200,
-            temperature=0.7
+            temperature=0.5
         )
         
         response = completion.choices[0].message.content
@@ -1390,6 +1394,10 @@ def get_deepseek_reply(messages: list, enable_tools: bool = True, update=None) -
     except Exception as e:
         error_str = str(e)
         print(f"Error in get_deepseek_reply: {error_str}")
+        
+        # Handle function calling errors
+        if "tool_use_failed" in error_str or "Failed to call a function" in error_str:
+            return "I tried to search for research information but encountered a technical issue with the function calling system. Please try rephrasing your question or ask me something else."
         
         # Handle token limit errors
         if "413" in error_str and "Request too large" in error_str:
