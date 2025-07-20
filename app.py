@@ -1470,7 +1470,11 @@ def web_search():
     try:
         paper_ids = search_papers(topic, max_results=10)
         papers_info = get_topic_papers(topic)
-        papers_data = json.loads(papers_info) if not papers_info.startswith("No papers") else {}
+        # get_topic_papers returns a list, not a string
+        if papers_info and isinstance(papers_info, list) and len(papers_info) > 0:
+            papers_data = papers_info
+        else:
+            papers_data = []
         
         return render_template('search_results.html', 
                              topic=topic, 
