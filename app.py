@@ -717,7 +717,7 @@ def get_llama_reply(messages: list, enable_tools: bool = True, update=None) -> s
             
             # Stop animation now that tools have completed
             if animation_started and update:
-                stop_animated_search_message(update.effective_chat.id)
+                stop_search_animation(update.effective_chat.id)
             
             final_response = final_completion.choices[0].message.content
             
@@ -941,7 +941,7 @@ def get_deepseek_reply(messages: list, enable_tools: bool = True, update=None) -
             
             # Stop animation now that tools have completed
             if animation_started and update:
-                stop_animated_search_message(update.effective_chat.id)
+                stop_search_animation(update.effective_chat.id)
             
             final_response = final_completion.choices[0].message.content
             

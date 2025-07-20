@@ -95,26 +95,9 @@
                         {% if paper.summary %}
                         <div class="mb-6">
                             <h3 class="text-sm font-semibold text-gray-700 mb-2">Abstract:</h3>
-                            {% if paper.summary|length > 500 %}
-                            <div class="abstract-container">
-                                <p class="text-gray-600 leading-relaxed abstract-short">
-                                    {{ paper.summary[:500] }}...
-                                    <button onclick="toggleAbstract(this)" class="text-blue-600 hover:text-blue-800 font-medium ml-2">
-                                        Show more
-                                    </button>
-                                </p>
-                                <p class="text-gray-600 leading-relaxed abstract-full" style="display: none;">
-                                    {{ paper.summary }}
-                                    <button onclick="toggleAbstract(this)" class="text-blue-600 hover:text-blue-800 font-medium ml-2">
-                                        Show less
-                                    </button>
-                                </p>
-                            </div>
-                            {% else %}
                             <p class="text-gray-600 leading-relaxed">
                                 {{ paper.summary }}
                             </p>
-                            {% endif %}
                         </div>
                         {% endif %}
                     </div>
