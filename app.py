@@ -674,22 +674,10 @@ def get_llama_reply(messages: list, enable_tools: bool = True, update=None) -> s
     try:
         client = Groq()
         
-        # Add system message for research formatting if tools are enabled
-        enhanced_messages = messages.copy()
-        if enable_tools:
-            # Check if we already have a system message
-            has_system_message = any(msg.get('role') == 'system' for msg in enhanced_messages)
-            if not has_system_message:
-                research_system_message = {
-                    "role": "system",
-                    "content": "You are a research assistant. When presenting research results:\n1. Show ALL papers retrieved (not just 5 - show the complete list)\n2. ALWAYS include PDF URLs for each paper\n3. Format as: Title, Authors, PDF URL, Abstract\n4. Do not editorialize or limit the number of papers shown\n5. Present complete information from the research data"
-                }
-                enhanced_messages.insert(0, research_system_message)
-        
         # Prepare the API call parameters
         api_params = {
             "model": "llama-3.1-8b-instant",
-            "messages": enhanced_messages
+            "messages": messages
         }
         
         # Add tools if enabled
@@ -838,7 +826,7 @@ def send_animated_search_message(update):
             # Cycle through the animation frames continuously until stopped
             frame_index = 1
             while animation_states.get(chat_id, {}).get('active', False):
-                time.sleep(0.1) 
+                time.sleep(0.5)  # Slower animation for better UX
                 try:
                     # Edit the message to show animation
                     bot.edit_message_text(
@@ -932,22 +920,10 @@ def get_deepseek_reply(messages: list, enable_tools: bool = True, update=None) -
     try:
         client = Groq()
         
-        # Add system message for research formatting if tools are enabled
-        enhanced_messages = messages.copy()
-        if enable_tools:
-            # Check if we already have a system message
-            has_system_message = any(msg.get('role') == 'system' for msg in enhanced_messages)
-            if not has_system_message:
-                research_system_message = {
-                    "role": "system",
-                    "content": "You are a research assistant. When presenting research results:\n1. Show ALL papers retrieved (not just 5 - show the complete list)\n2. ALWAYS include PDF URLs for each paper\n3. Format as: Title, Authors, PDF URL, Abstract\n4. Do not editorialize or limit the number of papers shown\n5. Present complete information from the research data"
-                }
-                enhanced_messages.insert(0, research_system_message)
-        
         # Prepare the API call parameters
         api_params = {
             "model": "deepseek-r1-distill-llama-70b",
-            "messages": enhanced_messages
+            "messages": messages
         }
         
         # Add tools if enabled
