@@ -707,6 +707,63 @@ def get_llama_reply(messages: list, enable_tools: bool = True) -> str:
         
         return f"⚠️ Error from Groq API: {error_str}"
 
+def send_animated_search_message(update):
+    """
+    Send an animated search message to indicate research is in progress
+    """
+    import time
+    import threading
+    
+    def animate_search():
+        search_frames = [
+            "🔍 Searching for relevant research",
+            "🔍 Searching for relevant research.",
+            "🔍 Searching for relevant research..",
+            "🔍 Searching for relevant research..."
+        ]
+        
+        # Send initial message
+        message = send_telegram_message(update, search_frames[0])
+        
+        # Animate for a short duration
+        for i in range(1, 4):
+            time.sleep(0.5)
+            try:
+                # Edit the message to show animation
+                update.effective_chat.bot.edit_message_text(
+                    chat_id=update.effective_chat.id,
+                    message_id=message.message_id,
+                    text=search_frames[i]
+                )
+            except Exception:
+                # If editing fails, just continue
+                pass
+    
+    # Run animation in a separate thread to not block
+    thread = threading.Thread(target=animate_search)
+    thread.daemon = True
+    thread.start()
+    
+    return thread
+
+def clean_markdown_formatting(text: str) -> str:
+    """
+    Remove asterisks, double asterisks, and backticks from text for cleaner Telegram display
+    """
+    import re
+    
+    # Remove markdown formatting
+    # Remove bold (**text**)
+    text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
+    # Remove italic (*text*)
+    text = re.sub(r'\*(.*?)\*', r'\1', text)
+    # Remove code blocks (```text```)
+    text = re.sub(r'```[^\n]*\n(.*?)\n```', r'\1', text, flags=re.DOTALL)
+    # Remove inline code (`text`)
+    text = re.sub(r'`(.*?)`', r'\1', text)
+    
+    return text
+
 def format_deepseek_thinking(text: str) -> str:
     """
     Format Deepseek's <think>...</think> tags nicely for Telegram display
@@ -718,11 +775,16 @@ def format_deepseek_thinking(text: str) -> str:
     
     def replace_think_tags(match):
         thinking_content = match.group(1).strip()
-        # Format as a nice collapsible section with emoji
-        return f"\n🤔 **Thinking Process:**\n```\n{thinking_content}\n```\n"
+        # Clean markdown from thinking content
+        thinking_content = clean_markdown_formatting(thinking_content)
+        # Format as a nice section with emoji (no markdown)
+        return f"\n🤔 Thinking Process:\n{thinking_content}\n"
     
     # Replace all <think>...</think> tags with formatted versions
     formatted_text = re.sub(think_pattern, replace_think_tags, text, flags=re.DOTALL)
+    
+    # Clean remaining markdown from the rest of the text
+    formatted_text = clean_markdown_formatting(formatted_text)
     
     return formatted_text
 
@@ -1077,9 +1139,10 @@ def llama_command(update, context):
         }
         udata['llama_history'].insert(0, system_message)
     
-    # Send "thinking" indicator for research queries
+    # Send animated search indicator for research queries
+    search_thread = None
     if any(keyword in q.lower() for keyword in ['paper', 'research', 'study', 'recent', 'latest', 'find', 'search', 'academic']):
-        send_telegram_message(update, "🔍 *Searching for relevant research...*")
+        search_thread = send_animated_search_message(update)
     
     # Get reply from LLAMA with function calling enabled
     reply = get_llama_reply(udata['llama_history'], enable_tools=True)
@@ -1123,9 +1186,10 @@ def deepseek_command(update, context):
         }
         udata['deepseek_history'].insert(0, system_message)
     
-    # Send "thinking" indicator for research queries
+    # Send animated search indicator for research queries
+    search_thread = None
     if any(keyword in q.lower() for keyword in ['paper', 'research', 'study', 'recent', 'latest', 'find', 'search', 'academic']):
-        send_telegram_message(update, "🔍 *Searching for relevant research...*")
+        search_thread = send_animated_search_message(update)
     
     # Get reply from Deepseek with function calling enabled
     reply = get_deepseek_reply(udata['deepseek_history'], enable_tools=True)
