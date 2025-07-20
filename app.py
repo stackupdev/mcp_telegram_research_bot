@@ -327,17 +327,222 @@ def get_topic_papers(topic: str):
         return []
 
 # ============================================================================
-# LLM FUNCTIONALITY (Groq API)
+# FUNCTION CALLING INFRASTRUCTURE
 # ============================================================================
 
-def get_llama_reply(messages: list) -> str:
+# Define function schemas for MCP tools
+MCP_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "search_papers",
+            "description": "Search for academic papers on ArXiv by topic. Use this when the user asks about research papers, recent studies, or wants to find papers on a specific topic.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "topic": {
+                        "type": "string",
+                        "description": "The research topic to search for (e.g., 'quantum computing', 'machine learning', 'neural networks')"
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "description": "Maximum number of papers to return (default: 5, max: 10)",
+                        "default": 5
+                    }
+                },
+                "required": ["topic"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "extract_info",
+            "description": "Get detailed information about a specific paper using its ArXiv ID. Use this when the user wants more details about a specific paper.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "paper_id": {
+                        "type": "string",
+                        "description": "The ArXiv paper ID (e.g., '2301.12345')"
+                    }
+                },
+                "required": ["paper_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_topic_papers",
+            "description": "Get all papers that have been previously saved for a specific research topic. Use this to retrieve papers from a known research area.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "topic": {
+                        "type": "string",
+                        "description": "The topic name to get papers for (use exact topic names from get_available_folders)"
+                    }
+                },
+                "required": ["topic"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_available_folders",
+            "description": "List all available research topic folders that contain saved papers. Use this to see what research topics are available.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    }
+]
+
+def execute_function_call(function_name: str, arguments: dict):
+    """
+    Execute a function call by routing to the appropriate MCP tool.
+    Returns the result of the function call.
+    """
+    try:
+        print(f"Executing function call: {function_name} with arguments: {arguments}")
+        
+        if function_name == "search_papers":
+            topic = arguments.get("topic")
+            max_results = arguments.get("max_results", 5)
+            result = search_papers(topic, max_results)
+            return {
+                "success": True,
+                "function": function_name,
+                "result": result,
+                "summary": f"Found {len(result)} papers on '{topic}'"
+            }
+            
+        elif function_name == "extract_info":
+            paper_id = arguments.get("paper_id")
+            result = extract_info(paper_id)
+            if "error" in result:
+                return {
+                    "success": False,
+                    "function": function_name,
+                    "error": result["error"]
+                }
+            return {
+                "success": True,
+                "function": function_name,
+                "result": result,
+                "summary": f"Retrieved details for paper {paper_id}"
+            }
+            
+        elif function_name == "get_topic_papers":
+            topic = arguments.get("topic")
+            result = get_topic_papers(topic)
+            return {
+                "success": True,
+                "function": function_name,
+                "result": result,
+                "summary": f"Found {len(result)} saved papers for topic '{topic}'"
+            }
+            
+        elif function_name == "get_available_folders":
+            result = get_available_folders()
+            return {
+                "success": True,
+                "function": function_name,
+                "result": result,
+                "summary": f"Found {len(result)} available research topics"
+            }
+            
+        else:
+            return {
+                "success": False,
+                "function": function_name,
+                "error": f"Unknown function: {function_name}"
+            }
+            
+    except Exception as e:
+        print(f"Error executing function {function_name}: {e}")
+        return {
+            "success": False,
+            "function": function_name,
+            "error": str(e)
+        }
+
+# ============================================================================
+# LLM FUNCTIONALITY (Groq API) - Enhanced with Function Calling
+# ============================================================================
+
+def get_llama_reply(messages: list, enable_tools: bool = True) -> str:
+    """
+    Enhanced LLama reply function with function calling support.
+    """
     try:
         client = Groq()
-        completion = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=messages
-        )
-        return completion.choices[0].message.content
+        
+        # Prepare the API call parameters
+        api_params = {
+            "model": "llama-3.1-8b-instant",
+            "messages": messages
+        }
+        
+        # Add tools if enabled
+        if enable_tools:
+            api_params["tools"] = MCP_TOOLS
+            api_params["tool_choice"] = "auto"
+        
+        completion = client.chat.completions.create(**api_params)
+        message = completion.choices[0].message
+        
+        # Check if the model wants to call functions
+        if message.tool_calls:
+            print(f"LLama wants to call {len(message.tool_calls)} function(s)")
+            
+            # Add the assistant's message with tool calls to conversation
+            messages.append({
+                "role": "assistant",
+                "content": message.content,
+                "tool_calls": [{
+                    "id": tool_call.id,
+                    "type": "function",
+                    "function": {
+                        "name": tool_call.function.name,
+                        "arguments": tool_call.function.arguments
+                    }
+                } for tool_call in message.tool_calls]
+            })
+            
+            # Execute each tool call
+            for tool_call in message.tool_calls:
+                function_name = tool_call.function.name
+                try:
+                    arguments = json.loads(tool_call.function.arguments)
+                except json.JSONDecodeError:
+                    arguments = {}
+                
+                # Execute the function
+                function_result = execute_function_call(function_name, arguments)
+                
+                # Add the function result to conversation
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": json.dumps(function_result)
+                })
+            
+            # Get the final response from the model with function results
+            final_completion = client.chat.completions.create(
+                model="llama-3.1-8b-instant",
+                messages=messages
+            )
+            
+            return final_completion.choices[0].message.content
+        
+        # No function calls, return regular response
+        return message.content
+        
     except Exception as e:
         error_str = str(e)
         print(f"Error in get_llama_reply: {error_str}")
@@ -348,14 +553,74 @@ def get_llama_reply(messages: list) -> str:
         
         return f"⚠️ Error from Groq API: {error_str}"
 
-def get_deepseek_reply(messages: list) -> str:
+def get_deepseek_reply(messages: list, enable_tools: bool = True) -> str:
+    """
+    Enhanced Deepseek reply function with function calling support.
+    """
     try:
         client = Groq()
-        completion_ds = client.chat.completions.create(
-            model="deepseek-r1-distill-llama-70b",
-            messages=messages
-        )
-        return completion_ds.choices[0].message.content
+        
+        # Prepare the API call parameters
+        api_params = {
+            "model": "deepseek-r1-distill-llama-70b",
+            "messages": messages
+        }
+        
+        # Add tools if enabled
+        if enable_tools:
+            api_params["tools"] = MCP_TOOLS
+            api_params["tool_choice"] = "auto"
+        
+        completion = client.chat.completions.create(**api_params)
+        message = completion.choices[0].message
+        
+        # Check if the model wants to call functions
+        if message.tool_calls:
+            print(f"Deepseek wants to call {len(message.tool_calls)} function(s)")
+            
+            # Add the assistant's message with tool calls to conversation
+            messages.append({
+                "role": "assistant",
+                "content": message.content,
+                "tool_calls": [{
+                    "id": tool_call.id,
+                    "type": "function",
+                    "function": {
+                        "name": tool_call.function.name,
+                        "arguments": tool_call.function.arguments
+                    }
+                } for tool_call in message.tool_calls]
+            })
+            
+            # Execute each tool call
+            for tool_call in message.tool_calls:
+                function_name = tool_call.function.name
+                try:
+                    arguments = json.loads(tool_call.function.arguments)
+                except json.JSONDecodeError:
+                    arguments = {}
+                
+                # Execute the function
+                function_result = execute_function_call(function_name, arguments)
+                
+                # Add the function result to conversation
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": json.dumps(function_result)
+                })
+            
+            # Get the final response from the model with function results
+            final_completion = client.chat.completions.create(
+                model="deepseek-r1-distill-llama-70b",
+                messages=messages
+            )
+            
+            return final_completion.choices[0].message.content
+        
+        # No function calls, return regular response
+        return message.content
+        
     except Exception as e:
         error_str = str(e)
         print(f"Error in get_deepseek_reply: {error_str}")
@@ -455,31 +720,41 @@ def start(update, context):
     
     send_telegram_message(
         update,
-        f"Welcome to Inquisita Spark Research Bot, {user_name}!\n\n" +
-        "🔬 Academic research and AI chat features:\n" +
-        "• Chat with LLAMA or Deepseek\n" +
-        "• MCP Tools: Search papers, view by topic, list topics\n\n" +
-        "Select an option below or use commands:\n" +
-        "/search <topic> - Search academic papers\n" +
-        "/papers <topic> - View papers for a topic\n" +
-        "/topics - List available research topics\n" +
-        "/llama <question> - Chat with LLAMA\n" +
-        "/deepseek <question> - Chat with Deepseek\n",
+        f"🔬 **Welcome to Inquisita Spark Research Assistant, {user_name}!**\n\n" +
+        "🤖 **Intelligent Research Chat:**\n" +
+        "• Chat naturally with LLAMA or Deepseek\n" +
+        "• AI automatically searches ArXiv papers when needed\n" +
+        "• Get research insights in conversational format\n\n" +
+        "📚 **Manual Research Tools:**\n" +
+        "• Direct paper search and topic browsing\n" +
+        "• Detailed paper information retrieval\n\n" +
+        "💡 **Just ask questions like:**\n" +
+        "• \"What are the latest papers on quantum computing?\"\n" +
+        "• \"Find research about neural networks\"\n" +
+        "• \"Tell me about recent AI developments\"\n\n" +
+        "Select a chat mode below or use /help for commands!",
         reply_markup=reply_markup
     )
 
 def help_command(update, context):
     send_telegram_message(update,
-        "🤖 Inquisita Spark Research Bot Commands:\n\n" +
-        "📚 Research Commands:\n" +
-        "/search <topic> - Search ArXiv papers\n" +
-        "/papers <topic> - View papers for topic\n" +
-        "/paper <id> - Get specific paper details\n" +
-        "/topics - List available topics\n\n" +
-        "🧠 AI Chat Commands:\n" +
-        "/llama <question> - Chat with LLAMA AI\n" +
-        "/deepseek <question> - Chat with Deepseek AI\n" +
-        "/reset - Reset conversation history\n"
+        "🤖 **Inquisita Spark Research Assistant Help**\n\n" +
+        "🧠 **Smart Chat (Recommended):**\n" +
+        "/llama <question> - Chat with LLAMA (auto-research enabled)\n" +
+        "/deepseek <question> - Chat with Deepseek (auto-research enabled)\n" +
+        "💡 *Just ask naturally! AI will search papers automatically when needed.*\n\n" +
+        "📚 **Manual Research Commands:**\n" +
+        "/search <topic> - Search ArXiv papers directly\n" +
+        "/papers <topic> - View papers for specific topic\n" +
+        "/paper <id> - Get detailed paper information\n" +
+        "/topics - List all available research topics\n\n" +
+        "🔧 **Utility Commands:**\n" +
+        "/reset - Clear conversation history\n" +
+        "/help - Show this help message\n\n" +
+        "✨ **Example Questions:**\n" +
+        "• \"What's new in machine learning research?\"\n" +
+        "• \"Find papers about quantum computing\"\n" +
+        "• \"Explain recent developments in AI safety\""
     )
 
 def search_command(update, context):
@@ -567,7 +842,7 @@ def llama_command(update, context):
     
     # Get the query from message
     if not context.args:
-        send_telegram_message(update, "Please provide a question after /llama")
+        send_telegram_message(update, "🤖 **LLama Research Assistant**\n\nI can help you with research questions and general chat. I have access to ArXiv papers and can search for academic research automatically when needed.\n\nJust ask me anything!")
         return
         
     q = ' '.join(context.args)
@@ -579,8 +854,20 @@ def llama_command(update, context):
     # Truncate conversation if needed before sending to API
     udata['llama_history'] = truncate_conversation(udata['llama_history'])
     
-    # Get reply from LLAMA
-    reply = get_llama_reply(udata['llama_history'])
+    # Add system message to guide the AI on tool usage (only if not already present)
+    if not udata['llama_history'] or udata['llama_history'][0].get('role') != 'system':
+        system_message = {
+            "role": "system",
+            "content": "You are a helpful research assistant with access to ArXiv academic papers. When users ask about research topics, recent papers, or want to find academic information, automatically use the available tools to search for and retrieve relevant papers. Integrate the research results naturally into your responses. Be conversational and helpful."
+        }
+        udata['llama_history'].insert(0, system_message)
+    
+    # Send "thinking" indicator for research queries
+    if any(keyword in q.lower() for keyword in ['paper', 'research', 'study', 'recent', 'latest', 'find', 'search', 'academic']):
+        send_telegram_message(update, "🔍 *Searching for relevant research...*")
+    
+    # Get reply from LLAMA with function calling enabled
+    reply = get_llama_reply(udata['llama_history'], enable_tools=True)
     
     # Only add assistant message to history if it's not an error
     if not reply.startswith("⚠️"):
@@ -601,7 +888,7 @@ def deepseek_command(update, context):
     
     # Get the query from message
     if not context.args:
-        send_telegram_message(update, "Please provide a question after /deepseek")
+        send_telegram_message(update, "🧠 **Deepseek Research Assistant**\n\nI can help you with research questions and general chat. I have access to ArXiv papers and can search for academic research automatically when needed.\n\nJust ask me anything!")
         return
         
     q = ' '.join(context.args)
@@ -613,8 +900,20 @@ def deepseek_command(update, context):
     # Truncate conversation if needed before sending to API
     udata['deepseek_history'] = truncate_conversation(udata['deepseek_history'])
     
-    # Get reply from Deepseek
-    reply = get_deepseek_reply(udata['deepseek_history'])
+    # Add system message to guide the AI on tool usage (only if not already present)
+    if not udata['deepseek_history'] or udata['deepseek_history'][0].get('role') != 'system':
+        system_message = {
+            "role": "system",
+            "content": "You are a helpful research assistant with access to ArXiv academic papers. When users ask about research topics, recent papers, or want to find academic information, automatically use the available tools to search for and retrieve relevant papers. Integrate the research results naturally into your responses. Be conversational and helpful."
+        }
+        udata['deepseek_history'].insert(0, system_message)
+    
+    # Send "thinking" indicator for research queries
+    if any(keyword in q.lower() for keyword in ['paper', 'research', 'study', 'recent', 'latest', 'find', 'search', 'academic']):
+        send_telegram_message(update, "🔍 *Searching for relevant research...*")
+    
+    # Get reply from Deepseek with function calling enabled
+    reply = get_deepseek_reply(udata['deepseek_history'], enable_tools=True)
     
     # Only add assistant message to history if it's not an error
     if not reply.startswith("⚠️"):
@@ -821,8 +1120,16 @@ def llama():
     if request.method == 'POST':
         q = request.form.get("q")
         if q:
-            messages = [{"role": "user", "content": q}]
-            reply = get_llama_reply(messages)
+            # Add system message for research assistant behavior
+            messages = [
+                {
+                    "role": "system",
+                    "content": "You are a helpful research assistant with access to ArXiv academic papers. When users ask about research topics, recent papers, or want to find academic information, automatically use the available tools to search for and retrieve relevant papers. Integrate the research results naturally into your responses. Be conversational and helpful."
+                },
+                {"role": "user", "content": q}
+            ]
+            # Use enhanced function calling
+            reply = get_llama_reply(messages, enable_tools=True)
             return render_template("llama_reply.html", r=reply)
     return render_template("llama.html")
 
@@ -831,9 +1138,18 @@ def deepseek():
     if request.method == 'POST':
         q = request.form.get("q")
         if q:
-            messages = [{"role": "user", "content": q}]
-    reply = get_deepseek_reply(messages)
-    return render_template("deepseek_reply.html", r=reply)
+            # Add system message for research assistant behavior
+            messages = [
+                {
+                    "role": "system",
+                    "content": "You are a helpful research assistant with access to ArXiv academic papers. When users ask about research topics, recent papers, or want to find academic information, automatically use the available tools to search for and retrieve relevant papers. Integrate the research results naturally into your responses. Be conversational and helpful."
+                },
+                {"role": "user", "content": q}
+            ]
+            # Use enhanced function calling
+            reply = get_deepseek_reply(messages, enable_tools=True)
+            return render_template("deepseek_reply.html", r=reply)
+    return render_template("deepseek.html")
 
 if __name__ == "__main__":
     app.run(debug=True)
