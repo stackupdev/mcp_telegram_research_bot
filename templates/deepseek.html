@@ -1,164 +1,317 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-    <title>Deepseek Research Assistant - Inquisita Spark</title>
-    <style>
-        .chat-header {
-            background: linear-gradient(135deg, #4caf50 0%, #388e3c 100%);
-            color: white;
-            padding: 30px;
-            border-radius: 12px;
-            text-align: center;
-            margin-bottom: 30px;
-        }
-        .chat-form {
-            background-color: white;
-            padding: 30px;
-            border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-            margin-bottom: 30px;
-        }
-        .query-input {
-            width: 100%;
-            padding: 15px;
-            border: 2px solid #ddd;
-            border-radius: 8px;
-            font-size: 16px;
-            margin-bottom: 20px;
-            box-sizing: border-box;
-            min-height: 100px;
-            resize: vertical;
-            font-family: inherit;
-        }
-        .query-input:focus {
-            border-color: #4caf50;
-            outline: none;
-        }
-        .submit-btn {
-            background: linear-gradient(135deg, #4caf50 0%, #388e3c 100%);
-            color: white;
-            padding: 15px 30px;
-            border: none;
-            border-radius: 8px;
-            font-size: 18px;
-            cursor: pointer;
-            transition: transform 0.2s ease;
-            width: 100%;
-        }
-        .submit-btn:hover {
-            transform: translateY(-2px);
-        }
-        .capabilities {
-            background-color: #e8f5e8;
-            border-left: 4px solid #4caf50;
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 30px;
-        }
-        .examples {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 15px;
-            margin-top: 20px;
-        }
-        .example-card {
-            background-color: #f8f9fa;
-            padding: 15px;
-            border-radius: 8px;
-            border: 1px solid #e9ecef;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-        .example-card:hover {
-            background-color: #e9ecef;
-            border-color: #4caf50;
-        }
-        .example-title {
-            font-weight: bold;
-            color: #333;
-            margin-bottom: 5px;
-        }
-        .example-text {
-            color: #666;
-            font-size: 14px;
-            font-style: italic;
-        }
-        .model-info {
-            background-color: #f8f9fa;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            text-align: center;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="chat-header">
-            <h1>🧠 Deepseek R1 Research Assistant</h1>
-            <p>Powered by Groq • Enhanced with ArXiv Research Tools</p>
-        </div>
-        
-        <div class="model-info">
-            <strong>Model:</strong> Deepseek R1 Distill Llama 70B • <strong>Provider:</strong> Groq • <strong>Research:</strong> ArXiv MCP Server
-        </div>
-        
-        <div class="capabilities">
-            <h3>🔬 Advanced Research Capabilities</h3>
-            <p>This powerful AI assistant can automatically:</p>
-            <ul>
-                <li><strong>Search ArXiv papers</strong> with sophisticated understanding of research topics</li>
-                <li><strong>Analyze and synthesize</strong> complex academic information</li>
-                <li><strong>Provide detailed insights</strong> from multiple research sources</li>
-                <li><strong>Reason through problems</strong> using the latest academic literature</li>
-            </ul>
-            <p><em>Ask complex research questions - Deepseek excels at deep analysis and reasoning!</em></p>
-        </div>
-        
-        <div class="chat-form">
-            <form action="/deepseek" method="post">
-                <label for="q" style="font-weight: bold; margin-bottom: 10px; display: block;">Ask me complex research questions or analytical tasks:</label>
-                <textarea name="q" id="q" class="query-input" placeholder="Example: Compare different approaches to quantum error correction in recent papers, or analyze the evolution of transformer architectures." required></textarea>
-                <button type="submit" class="submit-btn">🧠 Ask Deepseek</button>
-            </form>
-        </div>
-        
-        <div class="examples">
-            <div class="example-card" onclick="fillExample('Compare recent approaches to quantum error correction and their effectiveness')">
-                <div class="example-title">🔬 Comparative Analysis</div>
-                <div class="example-text">"Compare recent approaches to quantum error correction and their effectiveness"</div>
+{% extends "base.html" %}
+
+{% block title %}Deepseek Chat - Inquisita Spark{% endblock %}
+
+{% block content %}
+<!-- Header Section -->
+<section class="py-12 bg-gradient-to-br from-green-50 via-emerald-50 to-teal-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center mb-8">
+            <div class="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl mb-6">
+                <i class="fas fa-brain text-white text-2xl"></i>
             </div>
-            <div class="example-card" onclick="fillExample('Analyze the evolution of transformer architectures in the last 2 years')">
-                <div class="example-title">📈 Trend Analysis</div>
-                <div class="example-text">"Analyze the evolution of transformer architectures in the last 2 years"</div>
-            </div>
-            <div class="example-card" onclick="fillExample('What are the current limitations in large language model research?')">
-                <div class="example-title">🤔 Critical Analysis</div>
-                <div class="example-text">"What are the current limitations in large language model research?"</div>
-            </div>
-            <div class="example-card" onclick="fillExample('Synthesize findings from recent papers on reinforcement learning')">
-                <div class="example-title">📚 Research Synthesis</div>
-                <div class="example-text">"Synthesize findings from recent papers on reinforcement learning"</div>
-            </div>
-        </div>
-        
-        <div style="margin-top: 30px; text-align: center;">
-            <form action="/main" method="get" style="display: inline; margin-right: 10px;">
-                <input type="submit" value="← Back to Main Menu" style="background-color: #6c757d; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer;">
-            </form>
-            <form action="/llama" method="get" style="display: inline;">
-                <input type="submit" value="Try Llama Instead →" style="background-color: #ff9800; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer;">
-            </form>
+            <h1 class="text-4xl font-bold text-gray-900 mb-4">
+                Deepseek Research Assistant
+            </h1>
+            <p class="text-xl text-gray-600 max-w-2xl mx-auto">
+                Chat with Deepseek R1 Distill LLama 70B with advanced reasoning and research integration
+            </p>
         </div>
     </div>
-    
-    <script>
-        function fillExample(text) {
-            document.getElementById('q').value = text;
-            document.getElementById('q').focus();
-        }
-    </script>
-</body>
-</html>
+</section>
+
+<!-- Chat Interface -->
+<section class="py-16 bg-white">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="bg-white border border-gray-200 rounded-2xl shadow-lg overflow-hidden">
+            <!-- Chat Header -->
+            <div class="bg-gradient-to-r from-green-500 to-emerald-600 px-6 py-4">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-brain text-white text-lg"></i>
+                        </div>
+                        <div>
+                            <h2 class="text-lg font-semibold text-white">Deepseek R1 Distill LLama 70B</h2>
+                            <p class="text-green-100 text-sm">Advanced reasoning with thinking process</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <span class="px-3 py-1 bg-white/20 text-white text-xs rounded-full">
+                            <i class="fas fa-circle text-green-300 mr-1"></i>
+                            Online
+                        </span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Chat Form -->
+            <div class="p-6">
+                <form action="/deepseek" method="post" class="space-y-6">
+                    <div>
+                        <label for="question" class="block text-sm font-semibold text-gray-700 mb-3">
+                            Ask Deepseek complex questions - see the thinking process behind answers
+                        </label>
+                        <textarea name="q" 
+                                  id="question"
+                                  rows="6" 
+                                  placeholder="Examples:
+• Analyze the current state of quantum computing research
+• Compare different machine learning approaches for NLP
+• What are the implications of recent AI safety papers?
+• Explain the mathematical foundations of neural networks
+• Synthesize findings from recent climate science research"
+                                  class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none transition-all resize-none text-lg"
+                                  required></textarea>
+                    </div>
+                    
+                    <div class="flex flex-col sm:flex-row gap-4 justify-between items-center">
+                        <div class="flex items-center space-x-4 text-sm text-gray-600">
+                            <div class="flex items-center space-x-2">
+                                <i class="fas fa-cog text-green-500"></i>
+                                <span>Advanced reasoning</span>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <i class="fas fa-eye text-emerald-500"></i>
+                                <span>Thinking process visible</span>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <i class="fas fa-search text-teal-500"></i>
+                                <span>Research integration</span>
+                            </div>
+                        </div>
+                        
+                        <button type="submit" 
+                                class="px-8 py-4 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-semibold rounded-xl hover:from-green-600 hover:to-emerald-700 transition-all transform hover:scale-105 shadow-lg hover:shadow-xl">
+                            <i class="fas fa-paper-plane mr-2"></i>
+                            Send Message
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Features Section -->
+<section class="py-16 bg-gradient-to-br from-gray-50 to-green-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center mb-12">
+            <h2 class="text-3xl font-bold text-gray-900 mb-4">
+                Deepseek's Advanced Capabilities
+            </h2>
+            <p class="text-xl text-gray-600 max-w-2xl mx-auto">
+                Powered by Deepseek R1 with sophisticated reasoning and analysis
+            </p>
+        </div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <!-- Thinking Process -->
+            <div class="p-6 bg-white rounded-2xl shadow-lg border border-gray-100">
+                <div class="w-12 h-12 bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl flex items-center justify-center mb-4">
+                    <i class="fas fa-eye text-white text-xl"></i>
+                </div>
+                <h3 class="text-xl font-semibold text-gray-900 mb-3">Visible Thinking Process</h3>
+                <p class="text-gray-600 leading-relaxed">
+                    See how Deepseek reasons through complex problems with transparent thinking steps and logical progression.
+                </p>
+            </div>
+            
+            <!-- Advanced Reasoning -->
+            <div class="p-6 bg-white rounded-2xl shadow-lg border border-gray-100">
+                <div class="w-12 h-12 bg-gradient-to-r from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center mb-4">
+                    <i class="fas fa-cogs text-white text-xl"></i>
+                </div>
+                <h3 class="text-xl font-semibold text-gray-900 mb-3">Advanced Reasoning</h3>
+                <p class="text-gray-600 leading-relaxed">
+                    Handle complex multi-step problems with sophisticated logical reasoning and analytical capabilities.
+                </p>
+            </div>
+            
+            <!-- Research Integration -->
+            <div class="p-6 bg-white rounded-2xl shadow-lg border border-gray-100">
+                <div class="w-12 h-12 bg-gradient-to-r from-teal-500 to-cyan-600 rounded-xl flex items-center justify-center mb-4">
+                    <i class="fas fa-search text-white text-xl"></i>
+                </div>
+                <h3 class="text-xl font-semibold text-gray-900 mb-3">Smart Research</h3>
+                <p class="text-gray-600 leading-relaxed">
+                    Automatically searches and integrates academic papers when analyzing research questions or topics.
+                </p>
+            </div>
+            
+            <!-- Deep Analysis -->
+            <div class="p-6 bg-white rounded-2xl shadow-lg border border-gray-100">
+                <div class="w-12 h-12 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center mb-4">
+                    <i class="fas fa-microscope text-white text-xl"></i>
+                </div>
+                <h3 class="text-xl font-semibold text-gray-900 mb-3">Deep Analysis</h3>
+                <p class="text-gray-600 leading-relaxed">
+                    Provide comprehensive analysis of complex topics with detailed explanations and multiple perspectives.
+                </p>
+            </div>
+            
+            <!-- Mathematical Reasoning -->
+            <div class="p-6 bg-white rounded-2xl shadow-lg border border-gray-100">
+                <div class="w-12 h-12 bg-gradient-to-r from-purple-500 to-pink-600 rounded-xl flex items-center justify-center mb-4">
+                    <i class="fas fa-calculator text-white text-xl"></i>
+                </div>
+                <h3 class="text-xl font-semibold text-gray-900 mb-3">Mathematical Reasoning</h3>
+                <p class="text-gray-600 leading-relaxed">
+                    Excel at mathematical problems, proofs, and quantitative analysis with step-by-step solutions.
+                </p>
+            </div>
+            
+            <!-- Synthesis -->
+            <div class="p-6 bg-white rounded-2xl shadow-lg border border-gray-100">
+                <div class="w-12 h-12 bg-gradient-to-r from-orange-500 to-red-600 rounded-xl flex items-center justify-center mb-4">
+                    <i class="fas fa-puzzle-piece text-white text-xl"></i>
+                </div>
+                <h3 class="text-xl font-semibold text-gray-900 mb-3">Information Synthesis</h3>
+                <p class="text-gray-600 leading-relaxed">
+                    Combine information from multiple sources and perspectives to provide comprehensive insights.
+                </p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Thinking Process Example -->
+<section class="py-16 bg-white">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center mb-12">
+            <h2 class="text-3xl font-bold text-gray-900 mb-4">
+                How Deepseek Thinks
+            </h2>
+            <p class="text-xl text-gray-600 max-w-2xl mx-auto">
+                See the transparent reasoning process that makes Deepseek unique
+            </p>
+        </div>
+        
+        <div class="max-w-4xl mx-auto">
+            <div class="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-8 border border-green-100">
+                <h3 class="text-lg font-semibold text-gray-900 mb-6 flex items-center">
+                    <i class="fas fa-lightbulb text-green-600 mr-2"></i>
+                    Example: Complex Research Question
+                </h3>
+                
+                <div class="space-y-6">
+                    <!-- User Question -->
+                    <div class="bg-white rounded-lg p-4 border-l-4 border-green-500">
+                        <p class="text-gray-700 font-medium mb-2">You ask:</p>
+                        <p class="text-gray-600">"What are the key challenges in scaling quantum computers, and how do recent papers address these issues?"</p>
+                    </div>
+                    
+                    <!-- Thinking Process -->
+                    <div class="bg-green-100 rounded-lg p-4 border border-green-200">
+                        <p class="text-green-800 font-medium mb-2">🤔 Deepseek's Thinking Process:</p>
+                        <div class="text-green-700 text-sm space-y-2">
+                            <p>• I need to identify the main challenges in quantum computing scaling</p>
+                            <p>• I should search for recent papers on quantum computing challenges</p>
+                            <p>• I'll analyze how current research addresses these specific problems</p>
+                            <p>• I should organize my response by challenge type and solutions</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Final Response -->
+                    <div class="bg-green-500 text-white rounded-lg p-4">
+                        <p class="font-medium mb-2">Deepseek's Response:</p>
+                        <p class="text-green-100">*Automatically searches ArXiv* "Based on recent research, I've identified three key scaling challenges in quantum computing: decoherence, error rates, and physical scaling limitations. Let me break down how recent papers address each..."</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Comparison with LLama -->
+<section class="py-16 bg-gradient-to-br from-gray-50 to-green-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center mb-12">
+            <h2 class="text-3xl font-bold text-gray-900 mb-4">
+                Choose Your AI Assistant
+            </h2>
+            <p class="text-xl text-gray-600 max-w-2xl mx-auto">
+                Different models for different needs and preferences
+            </p>
+        </div>
+        
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-6xl mx-auto">
+            <!-- Deepseek -->
+            <div class="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
+                <div class="bg-gradient-to-r from-green-500 to-emerald-600 px-6 py-4">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-brain text-white text-lg"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-semibold text-white">Deepseek R1</h3>
+                            <p class="text-green-100 text-sm">Advanced reasoning model</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="p-6">
+                    <div class="space-y-3 mb-6">
+                        <div class="flex items-center text-sm text-gray-600">
+                            <i class="fas fa-check text-green-500 mr-2"></i>
+                            <span>Visible thinking process</span>
+                        </div>
+                        <div class="flex items-center text-sm text-gray-600">
+                            <i class="fas fa-check text-green-500 mr-2"></i>
+                            <span>Complex reasoning capabilities</span>
+                        </div>
+                        <div class="flex items-center text-sm text-gray-600">
+                            <i class="fas fa-check text-green-500 mr-2"></i>
+                            <span>Mathematical problem solving</span>
+                        </div>
+                        <div class="flex items-center text-sm text-gray-600">
+                            <i class="fas fa-check text-green-500 mr-2"></i>
+                            <span>Deep analytical insights</span>
+                        </div>
+                    </div>
+                    <p class="text-gray-600 text-sm mb-4">Best for: Complex analysis, mathematical problems, detailed reasoning</p>
+                </div>
+            </div>
+            
+            <!-- LLama -->
+            <a href="/llama" class="group block bg-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 border border-gray-100 overflow-hidden">
+                <div class="bg-gradient-to-r from-blue-500 to-purple-600 px-6 py-4">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-robot text-white text-lg"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-semibold text-white">LLama 3.1-8B</h3>
+                            <p class="text-blue-100 text-sm">Fast and efficient model</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="p-6">
+                    <div class="space-y-3 mb-6">
+                        <div class="flex items-center text-sm text-gray-600">
+                            <i class="fas fa-check text-blue-500 mr-2"></i>
+                            <span>Quick responses</span>
+                        </div>
+                        <div class="flex items-center text-sm text-gray-600">
+                            <i class="fas fa-check text-blue-500 mr-2"></i>
+                            <span>Natural conversation</span>
+                        </div>
+                        <div class="flex items-center text-sm text-gray-600">
+                            <i class="fas fa-check text-blue-500 mr-2"></i>
+                            <span>Broad knowledge base</span>
+                        </div>
+                        <div class="flex items-center text-sm text-gray-600">
+                            <i class="fas fa-check text-blue-500 mr-2"></i>
+                            <span>Efficient processing</span>
+                        </div>
+                    </div>
+                    <p class="text-gray-600 text-sm mb-4">Best for: General chat, quick answers, research summaries</p>
+                    <div class="flex items-center text-blue-600 font-medium group-hover:text-blue-700">
+                        <span>Try LLama Instead</span>
+                        <i class="fas fa-arrow-right ml-2 group-hover:translate-x-1 transition-transform"></i>
+                    </div>
+                </div>
+            </a>
+        </div>
+    </div>
+</section>
+{% endblock %}

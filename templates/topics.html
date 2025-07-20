@@ -1,180 +1,227 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-    <title>Research Topics - Inquisita Spark</title>
-    <style>
-        .topics-header {
-            background-color: #f3e5f5;
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            border-left: 4px solid #9c27b0;
-        }
-        .topic-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-        .topic-card {
-            background-color: white;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            padding: 20px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            transition: all 0.3s ease;
-            cursor: pointer;
-        }
-        .topic-card:hover {
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            transform: translateY(-2px);
-        }
-        .topic-name {
-            font-size: 20px;
-            font-weight: bold;
-            color: #333;
-            margin-bottom: 10px;
-        }
-        .topic-count {
-            color: #666;
-            font-size: 14px;
-            margin-bottom: 15px;
-        }
-        .topic-actions {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-        }
-        .topic-btn {
-            background-color: #9c27b0;
-            color: white;
-            padding: 8px 16px;
-            border: none;
-            border-radius: 4px;
-            font-size: 14px;
-            cursor: pointer;
-            text-decoration: none;
-            display: inline-block;
-        }
-        .topic-btn:hover {
-            background-color: #7b1fa2;
-        }
-        .topic-btn.secondary {
-            background-color: #f5f5f5;
-            color: #333;
-            border: 1px solid #ddd;
-        }
-        .topic-btn.secondary:hover {
-            background-color: #e0e0e0;
-        }
-        .no-topics {
-            text-align: center;
-            padding: 40px;
-            background-color: #f8f9fa;
-            border-radius: 8px;
-            color: #666;
-        }
-        .error {
-            background-color: #f8d7da;
-            color: #721c24;
-            padding: 15px;
-            border-radius: 6px;
-            margin-bottom: 20px;
-        }
-        .stats-bar {
-            background-color: #e8f5e8;
-            padding: 15px;
-            border-radius: 6px;
-            margin-bottom: 20px;
-            text-align: center;
-        }
-        .action-buttons {
-            text-align: center;
-            margin-top: 30px;
-        }
-        .action-btn {
-            background-color: #28a745;
-            color: white;
-            padding: 12px 24px;
-            border: none;
-            border-radius: 6px;
-            font-size: 16px;
-            cursor: pointer;
-            margin: 5px;
-            text-decoration: none;
-            display: inline-block;
-        }
-        .action-btn:hover {
-            background-color: #218838;
-        }
-        .action-btn.secondary {
-            background-color: #6c757d;
-        }
-        .action-btn.secondary:hover {
-            background-color: #545b62;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="topics-header">
-            <h2>📚 Research Topics</h2>
-            <p>Explore organized collections of academic papers by research area</p>
+{% extends "base.html" %}
+
+{% block title %}Research Topics - Inquisita Spark{% endblock %}
+
+{% block content %}
+<!-- Header Section -->
+<section class="py-12 bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center mb-8">
+            <div class="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-purple-500 to-pink-600 rounded-2xl mb-6">
+                <i class="fas fa-folder-open text-white text-2xl"></i>
+            </div>
+            <h1 class="text-4xl font-bold text-gray-900 mb-4">
+                Research Topics
+            </h1>
+            <p class="text-xl text-gray-600 max-w-2xl mx-auto">
+                Explore organized collections of academic papers by research area
+            </p>
         </div>
-        
-        {% if error %}
-        <div class="error">
-            <strong>Error:</strong> {{ error }}
-        </div>
-        {% endif %}
-        
+    </div>
+</section>
+
+<!-- Topics Grid -->
+<section class="py-16 bg-white">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {% if topics %}
-        <div class="stats-bar">
-            <strong>{{ topics|length }}</strong> research topics available with 
-            <strong>{{ topics.values()|sum }}</strong> total papers
-        </div>
-        
-        <div class="topic-grid">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {% for topic_name, paper_count in topics.items() %}
-            <div class="topic-card">
-                <div class="topic-name">{{ topic_name }}</div>
-                <div class="topic-count">
-                    📄 {{ paper_count }} paper{{ 's' if paper_count != 1 else '' }}
+            <div class="group bg-white border border-gray-200 rounded-2xl p-6 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                        <i class="fas fa-folder text-white text-xl"></i>
+                    </div>
+                    <span class="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-semibold">
+                        {{ paper_count }} paper{{ 's' if paper_count != 1 else '' }}
+                    </span>
                 </div>
-                <div class="topic-actions">
-                    <form action="/search" method="post" style="display: inline;">
-                        <input type="hidden" name="topic" value="{{ topic_name.lower() }}">
-                        <button type="submit" class="topic-btn">View Papers</button>
-                    </form>
-                    <form action="/llama" method="post" style="display: inline;">
-                        <input type="hidden" name="q" value="Tell me about recent research in {{ topic_name.lower() }}">
-                        <button type="submit" class="topic-btn secondary">Ask AI</button>
-                    </form>
-                </div>
+                
+                <h3 class="text-lg font-semibold text-gray-900 mb-3 group-hover:text-blue-600 transition-colors">
+                    {{ topic_name }}
+                </h3>
+                
+                <p class="text-gray-600 text-sm mb-4">
+                    Explore {{ paper_count }} research paper{{ 's' if paper_count != 1 else '' }} in {{ topic_name.lower() }}
+                </p>
+                
+                <form action="/search" method="post" class="w-full">
+                    <input type="hidden" name="topic" value="{{ topic_name.lower().replace(' ', '_') }}">
+                    <button type="submit" 
+                            class="w-full px-4 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:from-blue-600 hover:to-purple-700 transition-all transform group-hover:scale-105 shadow-lg">
+                        <i class="fas fa-arrow-right mr-2"></i>
+                        View Papers
+                    </button>
+                </form>
             </div>
             {% endfor %}
         </div>
+        
+        <!-- Stats Section -->
+        <div class="mt-16 text-center">
+            <div class="inline-flex items-center justify-center space-x-8 bg-gradient-to-r from-blue-50 to-purple-50 rounded-2xl p-8 border border-blue-100">
+                <div class="text-center">
+                    <div class="text-3xl font-bold text-blue-600 mb-1">{{ topics|length }}</div>
+                    <div class="text-sm text-gray-600">Research Topics</div>
+                </div>
+                <div class="w-px h-12 bg-gray-300"></div>
+                <div class="text-center">
+                    <div class="text-3xl font-bold text-purple-600 mb-1">{{ topics.values() | sum }}</div>
+                    <div class="text-sm text-gray-600">Total Papers</div>
+                </div>
+                <div class="w-px h-12 bg-gray-300"></div>
+                <div class="text-center">
+                    <div class="text-3xl font-bold text-green-600 mb-1">ArXiv</div>
+                    <div class="text-sm text-gray-600">Data Source</div>
+                </div>
+            </div>
+        </div>
+        
         {% else %}
-        <div class="no-topics">
-            <h3>📭 No research topics found</h3>
-            <p>It looks like no papers have been searched and saved yet.</p>
-            <p>Start by searching for papers on topics you're interested in!</p>
+        <!-- No Topics -->
+        <div class="text-center py-16">
+            <div class="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                <i class="fas fa-folder-open text-gray-400 text-3xl"></i>
+            </div>
+            <h2 class="text-2xl font-bold text-gray-900 mb-4">No Topics Available Yet</h2>
+            <p class="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
+                Start by searching for papers on topics you're interested in. Once you search, topics will be automatically organized and saved here.
+            </p>
+            
+            <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                <a href="/research" 
+                   class="px-8 py-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:from-blue-600 hover:to-purple-700 transition-all transform hover:scale-105 shadow-lg">
+                    <i class="fas fa-search mr-2"></i>
+                    Search Papers
+                </a>
+                <a href="/llama" 
+                   class="px-8 py-4 bg-transparent border-2 border-gray-300 text-gray-700 font-semibold rounded-xl hover:border-blue-500 hover:text-blue-600 transition-all transform hover:scale-105">
+                    <i class="fas fa-robot mr-2"></i>
+                    Ask AI
+                </a>
+            </div>
         </div>
         {% endif %}
         
-        <div class="action-buttons">
-            <a href="/research" class="action-btn">🔍 Search New Papers</a>
-            <a href="/llama" class="action-btn secondary">🤖 Chat with AI Assistant</a>
-            <a href="https://t.me/InquisitaSparkBot" target="_blank" class="action-btn secondary">💬 Use Telegram Bot</a>
+        {% if error %}
+        <div class="bg-red-50 border border-red-200 rounded-xl p-6 mb-8">
+            <div class="flex items-center">
+                <i class="fas fa-exclamation-circle text-red-500 mr-3 text-xl"></i>
+                <div>
+                    <h3 class="text-lg font-semibold text-red-800 mb-1">Error Loading Topics</h3>
+                    <p class="text-red-700">{{ error }}</p>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</section>
+
+<!-- How Topics Work -->
+<section class="py-16 bg-gradient-to-br from-gray-50 to-blue-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center mb-12">
+            <h2 class="text-3xl font-bold text-gray-900 mb-4">
+                How Topics Work
+            </h2>
+            <p class="text-xl text-gray-600 max-w-2xl mx-auto">
+                Understanding our intelligent topic organization system
+            </p>
         </div>
         
-        <div style="margin-top: 30px;">
-            <form action="/main" method="get">
-                <input type="submit" value="← Back to Main Menu">
-            </form>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div class="text-center p-6 bg-white rounded-2xl shadow-lg border border-gray-100">
+                <div class="w-16 h-16 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <span class="text-white text-2xl font-bold">1</span>
+                </div>
+                <h3 class="text-xl font-semibold text-gray-900 mb-3">Search Papers</h3>
+                <p class="text-gray-600">
+                    When you search for papers on any topic, they are automatically retrieved from ArXiv and analyzed.
+                </p>
+            </div>
+            
+            <div class="text-center p-6 bg-white rounded-2xl shadow-lg border border-gray-100">
+                <div class="w-16 h-16 bg-gradient-to-r from-purple-500 to-pink-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <span class="text-white text-2xl font-bold">2</span>
+                </div>
+                <h3 class="text-xl font-semibold text-gray-900 mb-3">Auto Organization</h3>
+                <p class="text-gray-600">
+                    Papers are intelligently organized by research topic and stored for easy future access and browsing.
+                </p>
+            </div>
+            
+            <div class="text-center p-6 bg-white rounded-2xl shadow-lg border border-gray-100">
+                <div class="w-16 h-16 bg-gradient-to-r from-green-500 to-emerald-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <span class="text-white text-2xl font-bold">3</span>
+                </div>
+                <h3 class="text-xl font-semibold text-gray-900 mb-3">Easy Access</h3>
+                <p class="text-gray-600">
+                    Browse topics here to quickly find papers in specific research areas without searching again.
+                </p>
+            </div>
         </div>
     </div>
-</body>
-</html>
+</section>
+
+<!-- Popular Research Areas -->
+<section class="py-16 bg-white">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center mb-12">
+            <h2 class="text-3xl font-bold text-gray-900 mb-4">
+                Popular Research Areas
+            </h2>
+            <p class="text-xl text-gray-600 max-w-2xl mx-auto">
+                Explore trending topics in academic research
+            </p>
+        </div>
+        
+        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            {% set popular_topics = [
+                'Machine Learning',
+                'Quantum Computing', 
+                'Neural Networks',
+                'Computer Vision',
+                'Natural Language Processing',
+                'Artificial Intelligence',
+                'Deep Learning',
+                'Robotics',
+                'Blockchain',
+                'Bioinformatics',
+                'Climate Science',
+                'Materials Science'
+            ] %}
+            
+            {% for topic in popular_topics %}
+            <form action="/search" method="post" class="w-full">
+                <input type="hidden" name="topic" value="{{ topic }}">
+                <button type="submit" 
+                        class="w-full px-4 py-3 bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700 font-medium rounded-xl hover:from-blue-100 hover:to-purple-100 hover:text-blue-700 transition-all transform hover:scale-105 text-sm border border-gray-200 hover:border-blue-300">
+                    {{ topic }}
+                </button>
+            </form>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+
+<!-- CTA Section -->
+<section class="py-16 bg-gradient-to-r from-blue-600 to-purple-600">
+    <div class="max-w-4xl mx-auto text-center px-4 sm:px-6 lg:px-8">
+        <h2 class="text-3xl md:text-4xl font-bold text-white mb-6">
+            Ready to Explore Research?
+        </h2>
+        <p class="text-xl text-blue-100 mb-8 max-w-2xl mx-auto">
+            Start searching for papers in your field of interest and build your personalized research library.
+        </p>
+        <div class="flex flex-col sm:flex-row gap-4 justify-center">
+            <a href="/research" class="px-8 py-4 bg-white text-blue-600 font-semibold rounded-xl hover:bg-gray-50 transition-all transform hover:scale-105 shadow-lg">
+                <i class="fas fa-search mr-2"></i>
+                Search Papers
+            </a>
+            <a href="/llama" class="px-8 py-4 bg-transparent border-2 border-white text-white font-semibold rounded-xl hover:bg-white hover:text-blue-600 transition-all transform hover:scale-105">
+                <i class="fas fa-robot mr-2"></i>
+                Ask AI Assistant
+            </a>
+        </div>
+    </div>
+</section>
+{% endblock %}

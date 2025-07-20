@@ -1,177 +1,252 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-    <title>Search Results - Inquisita Spark</title>
-    <style>
-        .results-header {
-            background-color: #e3f2fd;
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            border-left: 4px solid #2196f3;
-        }
-        .paper-card {
-            background-color: white;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 15px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            transition: box-shadow 0.3s ease;
-        }
-        .paper-card:hover {
-            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
-        }
-        .paper-title {
-            color: #1976d2;
-            font-size: 18px;
-            font-weight: bold;
-            margin-bottom: 10px;
-            line-height: 1.4;
-        }
-        .paper-authors {
-            color: #666;
-            font-style: italic;
-            margin-bottom: 8px;
-        }
-        .paper-date {
-            color: #888;
-            font-size: 14px;
-            margin-bottom: 10px;
-        }
-        .paper-summary {
-            color: #333;
-            line-height: 1.6;
-            margin-bottom: 15px;
-        }
-        .paper-links {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-        }
-        .paper-link {
-            background-color: #f5f5f5;
-            color: #333;
-            padding: 6px 12px;
-            border-radius: 4px;
-            text-decoration: none;
-            font-size: 14px;
-            border: 1px solid #ddd;
-        }
-        .paper-link:hover {
-            background-color: #e0e0e0;
-        }
-        .arxiv-link {
-            background-color: #ff6b35;
-            color: white;
-        }
-        .arxiv-link:hover {
-            background-color: #e55a2b;
-        }
-        .no-results {
-            text-align: center;
-            padding: 40px;
-            background-color: #f8f9fa;
-            border-radius: 8px;
-            color: #666;
-        }
-        .search-again {
-            background-color: #28a745;
-            color: white;
-            padding: 12px 24px;
-            border: none;
-            border-radius: 6px;
-            font-size: 16px;
-            cursor: pointer;
-            margin: 10px;
-        }
-        .search-again:hover {
-            background-color: #218838;
-        }
-        .stats {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 10px;
-        }
-        .paper-id {
-            font-family: monospace;
-            background-color: #f8f9fa;
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-size: 12px;
-            color: #666;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="results-header">
-            <h2>📊 Search Results for "{{ topic }}"</h2>
-            <div class="stats">
-                <span>Found {{ paper_count }} papers</span>
-                <span class="paper-id">Powered by ArXiv + MCP</span>
+{% extends "base.html" %}
+
+{% block title %}Search Results - {{ topic }} - Inquisita Spark{% endblock %}
+
+{% block content %}
+<!-- Header Section -->
+<section class="py-12 bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center mb-8">
+            <div class="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-2xl mb-6">
+                <i class="fas fa-search text-white text-2xl"></i>
             </div>
+            <h1 class="text-4xl font-bold text-gray-900 mb-4">
+                Search Results
+            </h1>
+            <p class="text-xl text-gray-600">
+                Found {{ paper_count }} papers for "<span class="font-semibold text-blue-600">{{ topic }}</span>"
+            </p>
         </div>
         
-        {% if papers and paper_count > 0 %}
-            {% for paper_id, paper in papers.items() %}
-            <div class="paper-card">
-                <div class="paper-title">{{ paper.title }}</div>
-                <div class="paper-authors">
-                    <strong>Authors:</strong> {{ paper.authors | join(', ') if paper.authors else 'Not available' }}
+        <!-- New Search -->
+        <div class="max-w-2xl mx-auto">
+            <form action="/search" method="post" class="mb-8">
+                <div class="flex flex-col sm:flex-row gap-4">
+                    <div class="flex-1">
+                        <input type="text" 
+                               name="topic" 
+                               value="{{ topic }}"
+                               placeholder="Enter research topic" 
+                               class="w-full px-6 py-4 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all bg-white/80 backdrop-blur-sm text-lg">
+                    </div>
+                    <button type="submit" 
+                            class="px-8 py-4 bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-semibold rounded-xl hover:from-blue-600 hover:to-indigo-700 transition-all transform hover:scale-105 shadow-lg hover:shadow-xl">
+                        <i class="fas fa-search mr-2"></i>
+                        Search Again
+                    </button>
                 </div>
-                <div class="paper-date">
-                    <strong>Published:</strong> {{ paper.published_date if paper.published_date else 'Date not available' }}
-                </div>
-                {% if paper.summary %}
-                <div class="paper-summary">
-                    <strong>Summary:</strong> {{ paper.summary[:300] }}{% if paper.summary|length > 300 %}...{% endif %}
-                </div>
-                {% endif %}
-                <div class="paper-links">
-                    <span class="paper-id">ID: {{ paper_id }}</span>
-                    {% if paper.arxiv_url %}
-                    <a href="{{ paper.arxiv_url }}" target="_blank" class="paper-link arxiv-link">View on ArXiv</a>
-                    {% endif %}
-                    {% if paper.pdf_url %}
-                    <a href="{{ paper.pdf_url }}" target="_blank" class="paper-link">Download PDF</a>
-                    {% endif %}
-                </div>
-            </div>
-            {% endfor %}
-        {% else %}
-            <div class="no-results">
-                <h3>🔍 No papers found</h3>
-                <p>We couldn't find any papers for the topic "{{ topic }}". Try:</p>
-                <ul style="text-align: left; display: inline-block;">
-                    <li>Using different keywords</li>
-                    <li>Checking spelling</li>
-                    <li>Using broader search terms</li>
-                    <li>Trying related topics</li>
-                </ul>
-            </div>
-        {% endif %}
-        
-        <div style="margin-top: 30px; text-align: center;">
-            <form action="/research" method="get" style="display: inline;">
-                <button type="submit" class="search-again">🔍 Search Again</button>
-            </form>
-            <form action="/topics" method="get" style="display: inline;">
-                <button type="submit" class="search-again">📚 Browse Topics</button>
-            </form>
-            <form action="/llama" method="get" style="display: inline;">
-                <button type="submit" class="search-again">🤖 Ask AI About These Papers</button>
-            </form>
-        </div>
-        
-        <div style="margin-top: 20px;">
-            <form action="/main" method="get">
-                <input type="submit" value="← Back to Main Menu">
             </form>
         </div>
     </div>
-</body>
-</html>
+</section>
+
+<!-- Results Section -->
+<section class="py-16 bg-white">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        {% if papers %}
+        <div class="space-y-8">
+            {% for paper in papers %}
+            <div class="bg-white border border-gray-200 rounded-2xl p-8 shadow-lg hover:shadow-xl transition-all duration-300">
+                <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
+                    <div class="flex-1">
+                        <h2 class="text-2xl font-bold text-gray-900 mb-4 leading-tight">
+                            {{ paper.title or 'Untitled Paper' }}
+                        </h2>
+                        
+                        <div class="flex flex-wrap items-center gap-4 mb-4 text-sm text-gray-600">
+                            {% if paper.id %}
+                            <div class="flex items-center gap-2">
+                                <i class="fas fa-id-card text-blue-500"></i>
+                                <span class="font-mono bg-gray-100 px-2 py-1 rounded">{{ paper.id }}</span>
+                            </div>
+                            {% endif %}
+                            
+                            {% if paper.published %}
+                            <div class="flex items-center gap-2">
+                                <i class="fas fa-calendar text-green-500"></i>
+                                <span>{{ paper.published[:10] if paper.published|length > 10 else paper.published }}</span>
+                            </div>
+                            {% endif %}
+                            
+                            {% if paper.authors %}
+                            <div class="flex items-center gap-2">
+                                <i class="fas fa-users text-purple-500"></i>
+                                <span>{{ paper.authors|length }} author{{ 's' if paper.authors|length != 1 else '' }}</span>
+                            </div>
+                            {% endif %}
+                        </div>
+                        
+                        {% if paper.authors %}
+                        <div class="mb-4">
+                            <h3 class="text-sm font-semibold text-gray-700 mb-2">Authors:</h3>
+                            <div class="flex flex-wrap gap-2">
+                                {% for author in paper.authors[:5] %}
+                                <span class="px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-sm">{{ author }}</span>
+                                {% endfor %}
+                                {% if paper.authors|length > 5 %}
+                                <span class="px-3 py-1 bg-gray-100 text-gray-600 rounded-full text-sm">
+                                    +{{ paper.authors|length - 5 }} more
+                                </span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endif %}
+                        
+                        {% if paper.summary %}
+                        <div class="mb-6">
+                            <h3 class="text-sm font-semibold text-gray-700 mb-2">Abstract:</h3>
+                            <p class="text-gray-600 leading-relaxed">
+                                {{ paper.summary[:500] }}{% if paper.summary|length > 500 %}...{% endif %}
+                            </p>
+                        </div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="flex flex-col gap-3 lg:w-48">
+                        {% if paper.pdf_url %}
+                        <a href="{{ paper.pdf_url }}" target="_blank" 
+                           class="flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-red-500 to-pink-600 text-white font-semibold rounded-xl hover:from-red-600 hover:to-pink-700 transition-all transform hover:scale-105 shadow-lg">
+                            <i class="fas fa-file-pdf"></i>
+                            <span>View PDF</span>
+                        </a>
+                        {% endif %}
+                        
+                        {% if paper.entry_id %}
+                        <a href="{{ paper.entry_id }}" target="_blank" 
+                           class="flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-semibold rounded-xl hover:from-blue-600 hover:to-indigo-700 transition-all transform hover:scale-105 shadow-lg">
+                            <i class="fas fa-external-link-alt"></i>
+                            <span>ArXiv</span>
+                        </a>
+                        {% endif %}
+                        
+                        <button onclick="copyPaperId('{{ paper.id }}')" 
+                                class="flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-gray-500 to-gray-600 text-white font-semibold rounded-xl hover:from-gray-600 hover:to-gray-700 transition-all transform hover:scale-105 shadow-lg">
+                            <i class="fas fa-copy"></i>
+                            <span>Copy ID</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        
+        <!-- Pagination or Load More (if needed) -->
+        <div class="text-center mt-12">
+            <p class="text-gray-600 mb-6">
+                Showing {{ papers|length }} of {{ paper_count }} papers
+            </p>
+            <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                <form action="/search" method="post">
+                    <input type="hidden" name="topic" value="{{ topic }}">
+                    <button type="submit" 
+                            class="px-8 py-4 bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-semibold rounded-xl hover:from-blue-600 hover:to-indigo-700 transition-all transform hover:scale-105 shadow-lg">
+                        <i class="fas fa-refresh mr-2"></i>
+                        Search More Papers
+                    </button>
+                </form>
+                <a href="/research" 
+                   class="px-8 py-4 bg-transparent border-2 border-gray-300 text-gray-700 font-semibold rounded-xl hover:border-blue-500 hover:text-blue-600 transition-all transform hover:scale-105">
+                    <i class="fas fa-search mr-2"></i>
+                    New Search
+                </a>
+            </div>
+        </div>
+        
+        {% else %}
+        <!-- No Results -->
+        <div class="text-center py-16">
+            <div class="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                <i class="fas fa-search text-gray-400 text-3xl"></i>
+            </div>
+            <h2 class="text-2xl font-bold text-gray-900 mb-4">No Papers Found</h2>
+            <p class="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
+                We couldn't find any papers for "<span class="font-semibold">{{ topic }}</span>". Try using different keywords or broader terms.
+            </p>
+            
+            <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                <a href="/research" 
+                   class="px-8 py-4 bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-semibold rounded-xl hover:from-blue-600 hover:to-indigo-700 transition-all transform hover:scale-105 shadow-lg">
+                    <i class="fas fa-search mr-2"></i>
+                    Try New Search
+                </a>
+                <a href="/topics" 
+                   class="px-8 py-4 bg-transparent border-2 border-gray-300 text-gray-700 font-semibold rounded-xl hover:border-blue-500 hover:text-blue-600 transition-all transform hover:scale-105">
+                    <i class="fas fa-folder-open mr-2"></i>
+                    Browse Topics
+                </a>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</section>
+
+<!-- Related Actions -->
+<section class="py-16 bg-gradient-to-br from-gray-50 to-blue-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center mb-12">
+            <h2 class="text-3xl font-bold text-gray-900 mb-4">
+                Continue Your Research
+            </h2>
+            <p class="text-xl text-gray-600 max-w-2xl mx-auto">
+                Explore more ways to discover and analyze academic research
+            </p>
+        </div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <!-- AI Chat -->
+            <a href="/llama" class="group block p-8 bg-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 border border-gray-100">
+                <div class="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                    <i class="fas fa-robot text-white text-xl"></i>
+                </div>
+                <h3 class="text-xl font-semibold text-gray-900 mb-3">Ask AI About This Topic</h3>
+                <p class="text-gray-600 leading-relaxed">
+                    Chat with LLama about "{{ topic }}" and get AI-powered insights with automatic paper search.
+                </p>
+            </a>
+            
+            <!-- Browse Topics -->
+            <a href="/topics" class="group block p-8 bg-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 border border-gray-100">
+                <div class="w-12 h-12 bg-gradient-to-r from-purple-500 to-pink-600 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                    <i class="fas fa-folder-open text-white text-xl"></i>
+                </div>
+                <h3 class="text-xl font-semibold text-gray-900 mb-3">Browse All Topics</h3>
+                <p class="text-gray-600 leading-relaxed">
+                    Explore other research topics and discover related papers in different subject areas.
+                </p>
+            </a>
+            
+            <!-- Deepseek Analysis -->
+            <a href="/deepseek" class="group block p-8 bg-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 border border-gray-100">
+                <div class="w-12 h-12 bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                    <i class="fas fa-brain text-white text-xl"></i>
+                </div>
+                <h3 class="text-xl font-semibold text-gray-900 mb-3">Deep Analysis</h3>
+                <p class="text-gray-600 leading-relaxed">
+                    Use Deepseek for advanced reasoning and detailed analysis of research in "{{ topic }}".
+                </p>
+            </a>
+        </div>
+    </div>
+</section>
+
+<script>
+function copyPaperId(paperId) {
+    navigator.clipboard.writeText(paperId).then(function() {
+        // Show success feedback
+        const button = event.target.closest('button');
+        const originalText = button.innerHTML;
+        button.innerHTML = '<i class="fas fa-check"></i> <span>Copied!</span>';
+        button.classList.add('bg-green-500', 'hover:bg-green-600');
+        button.classList.remove('bg-gray-500', 'hover:bg-gray-600');
+        
+        setTimeout(() => {
+            button.innerHTML = originalText;
+            button.classList.remove('bg-green-500', 'hover:bg-green-600');
+            button.classList.add('bg-gray-500', 'hover:bg-gray-600');
+        }, 2000);
+    }).catch(function(err) {
+        console.error('Could not copy text: ', err);
+    });
+}
+</script>
+{% endblock %}

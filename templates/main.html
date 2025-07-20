@@ -1,192 +1,231 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-    <title>Main Menu - Inquisita Spark</title>
-    <style>
-        .welcome-header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 30px;
-            border-radius: 12px;
-            text-align: center;
-            margin-bottom: 30px;
-        }
-        .menu-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 25px;
-            margin-bottom: 30px;
-        }
-        .menu-section {
-            background-color: white;
-            border-radius: 12px;
-            padding: 25px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-            border-left: 4px solid;
-        }
-        .research-section {
-            border-left-color: #2196f3;
-        }
-        .ai-section {
-            border-left-color: #ff9800;
-        }
-        .mobile-section {
-            border-left-color: #4caf50;
-        }
-        .section-title {
-            font-size: 1.4em;
-            margin-bottom: 15px;
-            font-weight: bold;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        .section-description {
-            color: #666;
-            margin-bottom: 20px;
-            line-height: 1.5;
-        }
-        .menu-buttons {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-        .menu-btn {
-            background-color: #f8f9fa;
-            border: 2px solid #e9ecef;
-            color: #333;
-            padding: 15px 20px;
-            border-radius: 8px;
-            font-size: 16px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            text-decoration: none;
-            display: block;
-            text-align: center;
-        }
-        .menu-btn:hover {
-            background-color: #e9ecef;
-            border-color: #dee2e6;
-            transform: translateY(-2px);
-        }
-        .menu-btn.primary {
-            background-color: #007bff;
-            border-color: #007bff;
-            color: white;
-        }
-        .menu-btn.primary:hover {
-            background-color: #0056b3;
-            border-color: #0056b3;
-        }
-        .menu-btn.success {
-            background-color: #28a745;
-            border-color: #28a745;
-            color: white;
-        }
-        .menu-btn.success:hover {
-            background-color: #218838;
-            border-color: #218838;
-        }
-        .menu-btn.warning {
-            background-color: #ffc107;
-            border-color: #ffc107;
-            color: #212529;
-        }
-        .menu-btn.warning:hover {
-            background-color: #e0a800;
-            border-color: #e0a800;
-        }
-        .user-greeting {
-            font-size: 1.2em;
-            margin-bottom: 10px;
-        }
-        .quick-stats {
-            background-color: #f8f9fa;
-            padding: 20px;
-            border-radius: 8px;
-            text-align: center;
-            margin-bottom: 30px;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="welcome-header">
-            {% if name and name != 'Guest' %}
-            <div class="user-greeting">Welcome back, {{ name }}! 👋</div>
-            {% else %}
-            <div class="user-greeting">Welcome to Inquisita Spark! 🔬</div>
-            {% endif %}
-            <p>Your AI-powered academic research companion</p>
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Inquisita Spark{% endblock %}
+
+{% block content %}
+<!-- Welcome Section -->
+<section class="py-12 bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center mb-12">
+            <h1 class="text-4xl font-bold text-gray-900 mb-4">
+                Welcome{% if name %}, {{ name }}{% endif %}!
+            </h1>
+            <p class="text-xl text-gray-600 max-w-2xl mx-auto">
+                Choose your preferred way to explore academic research and chat with AI assistants
+            </p>
         </div>
         
-        <div class="quick-stats">
-            <strong>🚀 Ready to explore?</strong> Choose from research tools, AI chat, or mobile access below
-        </div>
-        
-        <div class="menu-grid">
-            <!-- Research Section -->
-            <div class="menu-section research-section">
-                <div class="section-title">
-                    🔬 Academic Research
+        <!-- Quick Actions Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
+            <!-- Research Tool -->
+            <a href="/research" class="group block p-6 bg-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 border border-gray-100">
+                <div class="w-12 h-12 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                    <i class="fas fa-search text-white text-xl"></i>
                 </div>
-                <div class="section-description">
-                    Search ArXiv papers, organize by topics, and discover academic insights powered by our MCP server.
-                </div>
-                <div class="menu-buttons">
-                    <form action="/research" method="get">
-                        <button type="submit" class="menu-btn primary">🔍 Start Research Portal</button>
-                    </form>
-                    <form action="/topics" method="get">
-                        <button type="submit" class="menu-btn">📚 Browse Topics</button>
-                    </form>
-                </div>
-            </div>
+                <h3 class="text-lg font-semibold text-gray-900 mb-2">Research Papers</h3>
+                <p class="text-gray-600 text-sm">Search ArXiv for academic papers on any topic</p>
+            </a>
             
-            <!-- AI Chat Section -->
-            <div class="menu-section ai-section">
-                <div class="section-title">
-                    🤖 AI Research Assistants
+            <!-- Topics Browser -->
+            <a href="/topics" class="group block p-6 bg-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 border border-gray-100">
+                <div class="w-12 h-12 bg-gradient-to-r from-purple-500 to-pink-600 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                    <i class="fas fa-folder-open text-white text-xl"></i>
                 </div>
-                <div class="section-description">
-                    Chat with advanced AI models that can automatically search papers and provide research insights.
-                </div>
-                <div class="menu-buttons">
-                    <form action="/llama" method="get">
-                        <button type="submit" class="menu-btn warning">🦙 Chat with Llama 3.1</button>
-                    </form>
-                    <form action="/deepseek" method="get">
-                        <button type="submit" class="menu-btn warning">🧠 Chat with Deepseek R1</button>
-                    </form>
-                </div>
-            </div>
+                <h3 class="text-lg font-semibold text-gray-900 mb-2">Browse Topics</h3>
+                <p class="text-gray-600 text-sm">Explore saved research topics and papers</p>
+            </a>
             
-            <!-- Mobile Access Section -->
-            <div class="menu-section mobile-section">
-                <div class="section-title">
-                    📱 Mobile Access
+            <!-- LLama Chat -->
+            <a href="/llama" class="group block p-6 bg-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 border border-gray-100">
+                <div class="w-12 h-12 bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                    <i class="fas fa-robot text-white text-xl"></i>
                 </div>
-                <div class="section-description">
-                    Access all research tools on-the-go through our Telegram bot with full conversation memory.
+                <h3 class="text-lg font-semibold text-gray-900 mb-2">LLama Chat</h3>
+                <p class="text-gray-600 text-sm">Chat with LLama 3.1-8B with research tools</p>
+            </a>
+            
+            <!-- Deepseek Chat -->
+            <a href="/deepseek" class="group block p-6 bg-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 border border-gray-100">
+                <div class="w-12 h-12 bg-gradient-to-r from-orange-500 to-red-600 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                    <i class="fas fa-brain text-white text-xl"></i>
                 </div>
-                <div class="menu-buttons">
-                    <form action="https://t.me/InquisitaSparkBot" method="get" target="_blank">
-                        <button type="submit" class="menu-btn success">💬 Open Telegram Bot</button>
-                    </form>
-                    <form action="/telegram" method="get">
-                        <button type="submit" class="menu-btn">ℹ️ Bot Information</button>
-                    </form>
-                </div>
-            </div>
-        </div>
-        
-        <div style="text-align: center; margin-top: 30px;">
-            <form action="/" method="get">
-                <input type="submit" value="← Back to Welcome" style="background-color: #6c757d; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer;">
-            </form>
+                <h3 class="text-lg font-semibold text-gray-900 mb-2">Deepseek Chat</h3>
+                <p class="text-gray-600 text-sm">Chat with Deepseek R1 with research tools</p>
+            </a>
         </div>
     </div>
-</body>
-</html>
+</section>
+
+<!-- Features Overview -->
+<section class="py-16 bg-white">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+            <!-- AI Chat Features -->
+            <div>
+                <h2 class="text-3xl font-bold text-gray-900 mb-6">
+                    Intelligent AI Conversations
+                </h2>
+                <div class="space-y-6">
+                    <div class="flex items-start space-x-4">
+                        <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <i class="fas fa-magic text-blue-600"></i>
+                        </div>
+                        <div>
+                            <h3 class="font-semibold text-gray-900 mb-1">Automatic Research Integration</h3>
+                            <p class="text-gray-600">AI automatically searches for relevant papers when you ask research questions</p>
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-start space-x-4">
+                        <div class="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <i class="fas fa-comments text-purple-600"></i>
+                        </div>
+                        <div>
+                            <h3 class="font-semibold text-gray-900 mb-1">Natural Conversations</h3>
+                            <p class="text-gray-600">Chat naturally without needing to learn specific commands or syntax</p>
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-start space-x-4">
+                        <div class="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <i class="fas fa-memory text-green-600"></i>
+                        </div>
+                        <div>
+                            <h3 class="font-semibold text-gray-900 mb-1">Conversation Memory</h3>
+                            <p class="text-gray-600">AI remembers your conversation context for more coherent discussions</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mt-8 flex space-x-4">
+                    <a href="/llama" class="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:from-blue-600 hover:to-purple-700 transition-all transform hover:scale-105">
+                        Try LLama Chat
+                    </a>
+                    <a href="/deepseek" class="px-6 py-3 bg-gradient-to-r from-orange-500 to-red-600 text-white font-semibold rounded-xl hover:from-orange-600 hover:to-red-700 transition-all transform hover:scale-105">
+                        Try Deepseek Chat
+                    </a>
+                </div>
+            </div>
+            
+            <!-- Research Features -->
+            <div>
+                <h2 class="text-3xl font-bold text-gray-900 mb-6">
+                    Powerful Research Tools
+                </h2>
+                <div class="space-y-6">
+                    <div class="flex items-start space-x-4">
+                        <div class="w-8 h-8 bg-cyan-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <i class="fas fa-search text-cyan-600"></i>
+                        </div>
+                        <div>
+                            <h3 class="font-semibold text-gray-900 mb-1">ArXiv Paper Search</h3>
+                            <p class="text-gray-600">Search millions of academic papers with intelligent filtering and organization</p>
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-start space-x-4">
+                        <div class="w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <i class="fas fa-tags text-indigo-600"></i>
+                        </div>
+                        <div>
+                            <h3 class="font-semibold text-gray-900 mb-1">Topic Organization</h3>
+                            <p class="text-gray-600">Papers are automatically organized by research topics for easy browsing</p>
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-start space-x-4">
+                        <div class="w-8 h-8 bg-pink-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <i class="fas fa-file-alt text-pink-600"></i>
+                        </div>
+                        <div>
+                            <h3 class="font-semibold text-gray-900 mb-1">Detailed Paper Info</h3>
+                            <p class="text-gray-600">Get comprehensive information including abstracts, authors, and publication details</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mt-8 flex space-x-4">
+                    <a href="/research" class="px-6 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-semibold rounded-xl hover:from-cyan-600 hover:to-blue-700 transition-all transform hover:scale-105">
+                        Start Research
+                    </a>
+                    <a href="/topics" class="px-6 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-semibold rounded-xl hover:from-indigo-600 hover:to-purple-700 transition-all transform hover:scale-105">
+                        Browse Topics
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Telegram Bot Section -->
+<section class="py-16 bg-gradient-to-br from-gray-50 to-blue-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center mb-12">
+            <div class="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-blue-500 to-cyan-600 rounded-2xl mb-6">
+                <i class="fab fa-telegram text-white text-2xl"></i>
+            </div>
+            <h2 class="text-3xl font-bold text-gray-900 mb-4">
+                Also Available on Telegram
+            </h2>
+            <p class="text-xl text-gray-600 max-w-2xl mx-auto mb-8">
+                Access all features through our Telegram bot with conversation memory and personalized settings
+            </p>
+        </div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div class="text-center p-6 bg-white rounded-2xl shadow-lg">
+                <div class="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center mx-auto mb-4">
+                    <i class="fas fa-mobile-alt text-blue-600 text-xl"></i>
+                </div>
+                <h3 class="text-lg font-semibold text-gray-900 mb-2">Mobile Access</h3>
+                <p class="text-gray-600">Chat with AI and search papers directly from your phone</p>
+            </div>
+            
+            <div class="text-center p-6 bg-white rounded-2xl shadow-lg">
+                <div class="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center mx-auto mb-4">
+                    <i class="fas fa-user-cog text-purple-600 text-xl"></i>
+                </div>
+                <h3 class="text-lg font-semibold text-gray-900 mb-2">Personal Settings</h3>
+                <p class="text-gray-600">Toggle auto-research and customize your experience</p>
+            </div>
+            
+            <div class="text-center p-6 bg-white rounded-2xl shadow-lg">
+                <div class="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center mx-auto mb-4">
+                    <i class="fas fa-clock text-green-600 text-xl"></i>
+                </div>
+                <h3 class="text-lg font-semibold text-gray-900 mb-2">24/7 Availability</h3>
+                <p class="text-gray-600">Research and chat anytime, anywhere with instant responses</p>
+            </div>
+        </div>
+        
+        <div class="text-center mt-8">
+            <a href="https://t.me/your_bot_username" class="inline-flex items-center px-8 py-4 bg-gradient-to-r from-blue-500 to-cyan-600 text-white font-semibold rounded-xl hover:from-blue-600 hover:to-cyan-700 transition-all transform hover:scale-105 shadow-lg">
+                <i class="fab fa-telegram mr-2 text-xl"></i>
+                Start Telegram Bot
+            </a>
+        </div>
+    </div>
+</section>
+
+<!-- Recent Activity or Stats (if you want to add this later) -->
+<section class="py-16 bg-white">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center">
+            <h2 class="text-3xl font-bold text-gray-900 mb-4">
+                Ready to Start Your Research Journey?
+            </h2>
+            <p class="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
+                Choose any of the tools above to begin exploring the world of academic research with AI assistance
+            </p>
+            <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                <a href="/research" class="px-8 py-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:from-blue-600 hover:to-purple-700 transition-all transform hover:scale-105 shadow-lg">
+                    Search Papers Now
+                </a>
+                <a href="/llama" class="px-8 py-4 bg-transparent border-2 border-gray-300 text-gray-700 font-semibold rounded-xl hover:border-blue-500 hover:text-blue-600 transition-all transform hover:scale-105">
+                    Chat with AI
+                </a>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

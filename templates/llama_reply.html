@@ -1,186 +1,189 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-    <title>Llama Response - Inquisita Spark</title>
-    <style>
-        .response-header {
-            background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);
-            color: white;
-            padding: 20px;
-            border-radius: 12px;
-            text-align: center;
-            margin-bottom: 30px;
-        }
-        .response-content {
-            background-color: white;
-            padding: 30px;
-            border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-            margin-bottom: 30px;
-            line-height: 1.6;
-        }
-        .response-text {
-            color: #333;
-            font-size: 16px;
-            white-space: pre-wrap;
-            word-wrap: break-word;
-        }
-        .continue-chat {
-            background-color: #fff3e0;
-            border-left: 4px solid #ff9800;
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 30px;
-        }
-        .follow-up-form {
-            background-color: white;
-            padding: 25px;
-            border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-            margin-bottom: 30px;
-        }
-        .follow-input {
-            width: 100%;
-            padding: 15px;
-            border: 2px solid #ddd;
-            border-radius: 8px;
-            font-size: 16px;
-            margin-bottom: 15px;
-            box-sizing: border-box;
-            min-height: 80px;
-            resize: vertical;
-            font-family: inherit;
-        }
-        .follow-input:focus {
-            border-color: #ff9800;
-            outline: none;
-        }
-        .action-buttons {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin-bottom: 30px;
-        }
-        .action-btn {
-            padding: 12px 20px;
-            border: none;
-            border-radius: 8px;
-            font-size: 16px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            text-decoration: none;
-            display: block;
-            text-align: center;
-        }
-        .btn-primary {
-            background-color: #ff9800;
-            color: white;
-        }
-        .btn-primary:hover {
-            background-color: #f57c00;
-            transform: translateY(-2px);
-        }
-        .btn-secondary {
-            background-color: #f8f9fa;
-            color: #333;
-            border: 2px solid #e9ecef;
-        }
-        .btn-secondary:hover {
-            background-color: #e9ecef;
-            border-color: #dee2e6;
-        }
-        .btn-success {
-            background-color: #28a745;
-            color: white;
-        }
-        .btn-success:hover {
-            background-color: #218838;
-        }
-        .quick-actions {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-            justify-content: center;
-            margin-top: 20px;
-        }
-        .quick-btn {
-            background-color: #6c757d;
-            color: white;
-            padding: 8px 16px;
-            border: none;
-            border-radius: 6px;
-            font-size: 14px;
-            cursor: pointer;
-            text-decoration: none;
-        }
-        .quick-btn:hover {
-            background-color: #545b62;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="response-header">
-            <h1>🦙 Llama Response</h1>
-            <p>Powered by Groq • Enhanced with Research Tools</p>
-        </div>
-        
-        <div class="response-content">
-            <div class="response-text">{{ r }}</div>
-        </div>
-        
-        <div class="continue-chat">
-            <h3>💬 Continue the Conversation</h3>
-            <p>Ask follow-up questions, request more details, or explore related research topics!</p>
-        </div>
-        
-        <div class="follow-up-form">
-            <form action="/llama" method="post">
-                <label for="q" style="font-weight: bold; margin-bottom: 10px; display: block;">Ask a follow-up question:</label>
-                <textarea name="q" id="q" class="follow-input" placeholder="Ask for more details, related papers, or a different perspective..." required></textarea>
-                <button type="submit" class="action-btn btn-primary">🚀 Continue with Llama</button>
-            </form>
-        </div>
-        
-        <div class="action-buttons">
-            <form action="/deepseek" method="post">
-                <input type="hidden" name="q" value="{{ r[:100] }}... Can you provide a different perspective on this?">
-                <button type="submit" class="action-btn btn-success">🧠 Get Deepseek's Perspective</button>
-            </form>
-            
-            <form action="/research" method="get">
-                <button type="submit" class="action-btn btn-secondary">🔍 Search More Papers</button>
-            </form>
-            
-            <form action="/topics" method="get">
-                <button type="submit" class="action-btn btn-secondary">📚 Browse Research Topics</button>
-            </form>
-        </div>
-        
-        <div class="quick-actions">
-            <a href="/llama" class="quick-btn">🔄 New Llama Chat</a>
-            <a href="/main" class="quick-btn">🏠 Main Menu</a>
-            <a href="https://t.me/InquisitaSparkBot" target="_blank" class="quick-btn">💬 Telegram Bot</a>
+{% extends "base.html" %}
+
+{% block title %}LLama Response - Inquisita Spark{% endblock %}
+
+{% block content %}
+<!-- Header Section -->
+<section class="py-8 bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex items-center justify-center mb-6">
+            <div class="inline-flex items-center justify-center w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl mr-3">
+                <i class="fas fa-robot text-white text-lg"></i>
+            </div>
+            <h1 class="text-2xl font-bold text-gray-900">
+                LLama Response
+            </h1>
         </div>
     </div>
+</section>
+
+<!-- Response Section -->
+<section class="py-8 bg-white">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="bg-white border border-gray-200 rounded-2xl shadow-lg overflow-hidden">
+            <!-- Response Header -->
+            <div class="bg-gradient-to-r from-blue-500 to-purple-600 px-6 py-4">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
+                        <i class="fas fa-robot text-white text-lg"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-lg font-semibold text-white">LLama 3.1-8B Instant</h2>
+                        <p class="text-blue-100 text-sm">Research-enabled AI assistant</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Response Content -->
+            <div class="p-6">
+                <div class="prose prose-lg max-w-none">
+                    <div class="bg-gray-50 rounded-xl p-6 border border-gray-100">
+                        <div class="whitespace-pre-wrap text-gray-800 leading-relaxed">{{ r }}</div>
+                    </div>
+                </div>
+                
+                <!-- Action Buttons -->
+                <div class="flex flex-col sm:flex-row gap-4 mt-8 pt-6 border-t border-gray-200">
+                    <a href="/llama" 
+                       class="flex-1 px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:from-blue-600 hover:to-purple-700 transition-all transform hover:scale-105 shadow-lg text-center">
+                        <i class="fas fa-comment mr-2"></i>
+                        Continue Conversation
+                    </a>
+                    
+                    <button onclick="copyResponse()" 
+                            class="flex-1 px-6 py-3 bg-gray-100 text-gray-700 font-semibold rounded-xl hover:bg-gray-200 transition-all transform hover:scale-105 text-center">
+                        <i class="fas fa-copy mr-2"></i>
+                        Copy Response
+                    </button>
+                    
+                    <a href="/research" 
+                       class="flex-1 px-6 py-3 bg-transparent border-2 border-gray-300 text-gray-700 font-semibold rounded-xl hover:border-blue-500 hover:text-blue-600 transition-all transform hover:scale-105 text-center">
+                        <i class="fas fa-search mr-2"></i>
+                        Search Papers
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Related Actions -->
+<section class="py-16 bg-gradient-to-br from-gray-50 to-blue-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center mb-12">
+            <h2 class="text-3xl font-bold text-gray-900 mb-4">
+                What's Next?
+            </h2>
+            <p class="text-xl text-gray-600 max-w-2xl mx-auto">
+                Continue exploring with other AI assistants or research tools
+            </p>
+        </div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <!-- Continue with LLama -->
+            <a href="/llama" class="group block p-8 bg-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 border border-gray-100">
+                <div class="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                    <i class="fas fa-robot text-white text-xl"></i>
+                </div>
+                <h3 class="text-xl font-semibold text-gray-900 mb-3">Continue with LLama</h3>
+                <p class="text-gray-600 leading-relaxed">
+                    Ask follow-up questions or explore related topics with conversation memory intact.
+                </p>
+            </a>
+            
+            <!-- Try Deepseek -->
+            <a href="/deepseek" class="group block p-8 bg-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 border border-gray-100">
+                <div class="w-12 h-12 bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                    <i class="fas fa-brain text-white text-xl"></i>
+                </div>
+                <h3 class="text-xl font-semibold text-gray-900 mb-3">Try Deepseek</h3>
+                <p class="text-gray-600 leading-relaxed">
+                    Get a different perspective with Deepseek's advanced reasoning and thinking process.
+                </p>
+            </a>
+            
+            <!-- Manual Research -->
+            <a href="/research" class="group block p-8 bg-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 border border-gray-100">
+                <div class="w-12 h-12 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                    <i class="fas fa-search text-white text-xl"></i>
+                </div>
+                <h3 class="text-xl font-semibold text-gray-900 mb-3">Direct Research</h3>
+                <p class="text-gray-600 leading-relaxed">
+                    Search for specific papers or browse research topics without AI chat interface.
+                </p>
+            </a>
+        </div>
+    </div>
+</section>
+
+<!-- Feedback Section -->
+<section class="py-16 bg-white">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+        <div class="bg-gradient-to-r from-blue-50 to-purple-50 rounded-2xl p-8 border border-blue-100">
+            <h2 class="text-2xl font-bold text-gray-900 mb-4">
+                How was this response?
+            </h2>
+            <p class="text-gray-600 mb-6">
+                Your feedback helps us improve the AI research experience
+            </p>
+            <div class="flex justify-center space-x-4">
+                <button onclick="provideFeedback('helpful')" 
+                        class="px-6 py-3 bg-green-100 text-green-700 font-semibold rounded-xl hover:bg-green-200 transition-all transform hover:scale-105">
+                    <i class="fas fa-thumbs-up mr-2"></i>
+                    Helpful
+                </button>
+                <button onclick="provideFeedback('not-helpful')" 
+                        class="px-6 py-3 bg-red-100 text-red-700 font-semibold rounded-xl hover:bg-red-200 transition-all transform hover:scale-105">
+                    <i class="fas fa-thumbs-down mr-2"></i>
+                    Not Helpful
+                </button>
+            </div>
+        </div>
+    </div>
+</section>
+
+<script>
+function copyResponse() {
+    const responseText = document.querySelector('.whitespace-pre-wrap').textContent;
+    navigator.clipboard.writeText(responseText).then(function() {
+        // Show success feedback
+        const button = event.target.closest('button');
+        const originalText = button.innerHTML;
+        button.innerHTML = '<i class="fas fa-check mr-2"></i>Copied!';
+        button.classList.add('bg-green-100', 'text-green-700');
+        button.classList.remove('bg-gray-100', 'text-gray-700');
+        
+        setTimeout(() => {
+            button.innerHTML = originalText;
+            button.classList.remove('bg-green-100', 'text-green-700');
+            button.classList.add('bg-gray-100', 'text-gray-700');
+        }, 2000);
+    }).catch(function(err) {
+        console.error('Could not copy text: ', err);
+    });
+}
+
+function provideFeedback(type) {
+    // Show feedback confirmation
+    const button = event.target.closest('button');
+    const originalText = button.innerHTML;
     
-    <script>
-        // Auto-focus on the follow-up input
-        document.getElementById('q').focus();
-        
-        // Add some example follow-up questions
-        const examples = [
-            "Can you find more recent papers on this topic?",
-            "What are the limitations of this approach?",
-            "How does this compare to other methods?",
-            "What are the practical applications?"
-        ];
-        
-        function addExample(text) {
-            document.getElementById('q').value = text;
-        }
-    </script>
-</body>
-</html>
+    if (type === 'helpful') {
+        button.innerHTML = '<i class="fas fa-check mr-2"></i>Thanks!';
+        button.classList.add('bg-green-200');
+    } else {
+        button.innerHTML = '<i class="fas fa-check mr-2"></i>Noted';
+        button.classList.add('bg-red-200');
+    }
+    
+    // Reset after 2 seconds
+    setTimeout(() => {
+        button.innerHTML = originalText;
+        button.classList.remove('bg-green-200', 'bg-red-200');
+    }, 2000);
+    
+    // Here you could send feedback to your backend
+    console.log('Feedback:', type);
+}
+</script>
+{% endblock %}
