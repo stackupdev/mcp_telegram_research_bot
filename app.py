@@ -106,7 +106,23 @@ def search_papers(topic: str, max_results: int = 5) -> List[str]:
         print(f"Search result: {result}")
         print(f"Search result type: {type(result)}")
         
-        if isinstance(result, list):
+        # Handle MCP tool call result
+        if hasattr(result, 'content') and result.content:
+            # Extract content from MCP tool result
+            content = result.content
+            print(f"Extracted content: {content}")
+            if isinstance(content, list):
+                print(f"Found {len(content)} papers")
+                return content
+            elif isinstance(content, str):
+                try:
+                    parsed = json.loads(content)
+                    if isinstance(parsed, list):
+                        return parsed
+                except:
+                    pass
+                return [content] if content else []
+        elif isinstance(result, list):
             print(f"Found {len(result)} papers")
             return result
         elif isinstance(result, str):
@@ -182,11 +198,21 @@ def get_available_folders():
         print(f"Raw result from MCP server: {result}")
         print(f"Result type: {type(result)}")
         
-        # Parse the markdown content to extract folder names
-        if isinstance(result, str):
-            lines = result.split('\n')
+        # Handle MCP ReadResourceResult object
+        text_content = None
+        if hasattr(result, 'contents') and result.contents:
+            # Extract text from the first content item
+            first_content = result.contents[0]
+            if hasattr(first_content, 'text'):
+                text_content = first_content.text
+                print(f"Extracted text content: {text_content}")
+        elif isinstance(result, str):
+            text_content = result
+        
+        if text_content:
+            lines = text_content.split('\n')
             folders = []
-            print(f"Processing {len(lines)} lines from result")
+            print(f"Processing {len(lines)} lines from text content")
             for i, line in enumerate(lines):
                 print(f"Line {i}: '{line.strip()}'")
                 if line.strip().startswith('- '):
