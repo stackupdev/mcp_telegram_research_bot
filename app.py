@@ -57,10 +57,32 @@ def search_papers(topic: str, max_results: int = 5) -> List[str]:
     
     try:
         # Call the search_papers tool via MCP
+        print(f"Calling search_papers tool with topic='{topic}', max_results={max_results}")
         result = mcp_client.call_tool("search_papers", topic=topic, max_results=max_results)
-        return result if isinstance(result, list) else []
+        print(f"Search result: {result}")
+        print(f"Search result type: {type(result)}")
+        
+        if isinstance(result, list):
+            print(f"Found {len(result)} papers")
+            return result
+        elif isinstance(result, str):
+            print(f"Got string result: {result}")
+            # Try to parse if it's a JSON string
+            try:
+                import json
+                parsed = json.loads(result)
+                if isinstance(parsed, list):
+                    return parsed
+            except:
+                pass
+            return [result] if result else []
+        else:
+            print(f"Unexpected result type: {type(result)}")
+            return []
     except Exception as e:
         print(f"Error calling search_papers via MCP: {e}")
+        import traceback
+        print(f"Full traceback: {traceback.format_exc()}")
         return []
 
 def extract_info(paper_id: str):
@@ -99,19 +121,38 @@ def get_available_folders():
     
     try:
         # Get the folders resource via MCP
+        print("Attempting to read resource: papers://folders")
         result = mcp_client.read_resource("papers://folders")
+        print(f"Raw result from MCP server: {result}")
+        print(f"Result type: {type(result)}")
+        
         # Parse the markdown content to extract folder names
         if isinstance(result, str):
             lines = result.split('\n')
             folders = []
-            for line in lines:
+            print(f"Processing {len(lines)} lines from result")
+            for i, line in enumerate(lines):
+                print(f"Line {i}: '{line.strip()}'")
                 if line.strip().startswith('- '):
                     folder_name = line.strip()[2:]  # Remove '- ' prefix
                     folders.append(folder_name)
+                    print(f"Found folder: {folder_name}")
+            print(f"Total folders found: {len(folders)}")
             return folders
-        return []
+        elif isinstance(result, dict):
+            print(f"Result is dict with keys: {result.keys()}")
+            # Handle if result is a dictionary
+            return list(result.keys()) if result else []
+        elif isinstance(result, list):
+            print(f"Result is list with {len(result)} items")
+            return result
+        else:
+            print(f"Unexpected result type: {type(result)}")
+            return []
     except Exception as e:
         print(f"Error calling get_available_folders via MCP: {e}")
+        import traceback
+        print(f"Full traceback: {traceback.format_exc()}")
         return []
 
 def get_topic_papers(topic: str):
