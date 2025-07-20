@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <title>Academic Research - Inquisita Spark</title>
+    <style>
+        .research-section {
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-left: 4px solid #007bff;
+        }
+        .search-form {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .search-input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+            margin-bottom: 15px;
+        }
+        .search-input:focus {
+            border-color: #007bff;
+            outline: none;
+        }
+        .search-btn {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            width: 100%;
+        }
+        .search-btn:hover {
+            background-color: #0056b3;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+        }
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .feature-card {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .feature-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>🔬 Academic Research Portal</h2>
+        <p>Search and explore academic papers from ArXiv using our advanced MCP-powered research tools.</p>
+        
+        {% if error %}
+        <div class="error">
+            <strong>Error:</strong> {{ error }}
+        </div>
+        {% endif %}
+        
+        <div class="research-section">
+            <h3>🔍 Search Academic Papers</h3>
+            <div class="search-form">
+                <form action="/search" method="post">
+                    <input type="text" name="topic" class="search-input" 
+                           placeholder="Enter research topic (e.g., 'quantum computing', 'machine learning', 'neural networks')" 
+                           required>
+                    <button type="submit" class="search-btn">Search Papers</button>
+                </form>
+            </div>
+        </div>
+        
+        <div class="feature-grid">
+            <div class="feature-card">
+                <div class="feature-icon">📚</div>
+                <h4>Browse Topics</h4>
+                <p>Explore previously researched topics and their paper collections</p>
+                <form action="/topics" method="get">
+                    <input type="submit" value="View Topics" class="search-btn">
+                </form>
+            </div>
+            
+            <div class="feature-card">
+                <div class="feature-icon">🤖</div>
+                <h4>AI Research Assistant</h4>
+                <p>Chat with AI models that can automatically search and analyze papers</p>
+                <form action="/llama" method="get">
+                    <input type="submit" value="Chat with Llama" class="search-btn">
+                </form>
+            </div>
+            
+            <div class="feature-card">
+                <div class="feature-icon">💬</div>
+                <h4>Telegram Bot</h4>
+                <p>Access research tools directly from Telegram for mobile convenience</p>
+                <form action="https://t.me/InquisitaSparkBot" method="get" target="_blank">
+                    <input type="submit" value="Open Telegram Bot" class="search-btn">
+                </form>
+            </div>
+        </div>
+        
+        <div style="margin-top: 30px;">
+            <form action="/main" method="get">
+                <input type="submit" value="← Back to Main Menu">
+            </form>
+        </div>
+    </div>
+</body>
+</html>

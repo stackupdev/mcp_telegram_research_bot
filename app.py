@@ -405,15 +405,46 @@ MCP_TOOLS = [
 def execute_function_call(function_name: str, arguments: dict):
     """
     Execute a function call by routing to the appropriate MCP tool.
-    Returns the result of the function call.
+    Returns the result of the function call with robust error handling.
     """
     try:
         print(f"Executing function call: {function_name} with arguments: {arguments}")
         
+        # Validate inputs
+        if not function_name:
+            return {
+                "success": False,
+                "function": "unknown",
+                "error": "Function name is empty"
+            }
+            
+        if not isinstance(arguments, dict):
+            arguments = {}
+        
         if function_name == "search_papers":
             topic = arguments.get("topic")
+            if not topic or not isinstance(topic, str):
+                return {
+                    "success": False,
+                    "function": function_name,
+                    "error": "Topic parameter is required and must be a string"
+                }
+            
             max_results = arguments.get("max_results", 5)
+            try:
+                max_results = int(max_results)
+                max_results = max(1, min(max_results, 10))  # Clamp between 1-10
+            except (ValueError, TypeError):
+                max_results = 5
+            
             result = search_papers(topic, max_results)
+            
+            # Validate result
+            if result is None:
+                result = []
+            elif not isinstance(result, list):
+                result = [str(result)] if result else []
+            
             return {
                 "success": True,
                 "function": function_name,
@@ -423,12 +454,20 @@ def execute_function_call(function_name: str, arguments: dict):
             
         elif function_name == "extract_info":
             paper_id = arguments.get("paper_id")
-            result = extract_info(paper_id)
-            if "error" in result:
+            if not paper_id or not isinstance(paper_id, str):
                 return {
                     "success": False,
                     "function": function_name,
-                    "error": result["error"]
+                    "error": "Paper ID parameter is required and must be a string"
+                }
+            
+            result = extract_info(paper_id)
+            if not result or (isinstance(result, dict) and "error" in result):
+                error_msg = result.get("error", "Failed to retrieve paper information") if isinstance(result, dict) else "Failed to retrieve paper information"
+                return {
+                    "success": False,
+                    "function": function_name,
+                    "error": error_msg
                 }
             return {
                 "success": True,
@@ -439,7 +478,19 @@ def execute_function_call(function_name: str, arguments: dict):
             
         elif function_name == "get_topic_papers":
             topic = arguments.get("topic")
+            if not topic or not isinstance(topic, str):
+                return {
+                    "success": False,
+                    "function": function_name,
+                    "error": "Topic parameter is required and must be a string"
+                }
+            
             result = get_topic_papers(topic)
+            if result is None:
+                result = []
+            elif not isinstance(result, list):
+                result = []
+            
             return {
                 "success": True,
                 "function": function_name,
@@ -449,6 +500,11 @@ def execute_function_call(function_name: str, arguments: dict):
             
         elif function_name == "get_available_folders":
             result = get_available_folders()
+            if result is None:
+                result = []
+            elif not isinstance(result, list):
+                result = []
+            
             return {
                 "success": True,
                 "function": function_name,
@@ -538,10 +594,22 @@ def get_llama_reply(messages: list, enable_tools: bool = True) -> str:
                 messages=messages
             )
             
-            return final_completion.choices[0].message.content
+            final_response = final_completion.choices[0].message.content
+            
+            # Validate final response
+            if not final_response or not final_response.strip():
+                return "I found some research results but had trouble formatting the response. Please try asking your question again."
+            
+            return final_response
         
         # No function calls, return regular response
-        return message.content
+        response = message.content
+        
+        # Validate regular response
+        if not response or not response.strip():
+            return "I'm having trouble generating a response right now. Please try asking your question again."
+            
+        return response
         
     except Exception as e:
         error_str = str(e)
@@ -616,10 +684,22 @@ def get_deepseek_reply(messages: list, enable_tools: bool = True) -> str:
                 messages=messages
             )
             
-            return final_completion.choices[0].message.content
+            final_response = final_completion.choices[0].message.content
+            
+            # Validate final response
+            if not final_response or not final_response.strip():
+                return "I found some research results but had trouble formatting the response. Please try asking your question again."
+            
+            return final_response
         
         # No function calls, return regular response
-        return message.content
+        response = message.content
+        
+        # Validate regular response
+        if not response or not response.strip():
+            return "I'm having trouble generating a response right now. Please try asking your question again."
+            
+        return response
         
     except Exception as e:
         error_str = str(e)
@@ -644,13 +724,24 @@ def truncate_conversation(messages, max_tokens=MAX_TOKENS):
     """
     Automatically truncate conversation history to stay within token limits.
     Uses a simple heuristic of ~4 chars per token for estimation.
+    Handles function calling messages with None content.
     """
     
     if not messages:
         return messages
     
+    def safe_content_length(msg):
+        """Safely get content length, handling None values from function calls"""
+        content = msg.get('content')
+        if content is None:
+            return 0
+        if isinstance(content, str):
+            return len(content)
+        # Handle other content types (lists, etc.)
+        return len(str(content))
+    
     # Estimate tokens (rough heuristic: ~4 characters per token)
-    total_chars = sum(len(msg.get('content', '')) for msg in messages)
+    total_chars = sum(safe_content_length(msg) for msg in messages)
     estimated_tokens = total_chars // 4
     
     if estimated_tokens <= max_tokens:
@@ -665,7 +756,7 @@ def truncate_conversation(messages, max_tokens=MAX_TOKENS):
     # Keep the most recent messages that fit within the token limit
     chars_count = 0
     for msg in reversed(messages):
-        msg_chars = len(msg.get('content', ''))
+        msg_chars = safe_content_length(msg)
         if (chars_count + msg_chars) // 4 > max_tokens:
             break
         truncated.insert(-1 if truncated and truncated[0].get('role') == 'system' else 0, msg)
@@ -675,6 +766,15 @@ def truncate_conversation(messages, max_tokens=MAX_TOKENS):
 
 def send_telegram_message(update, text, reply_markup=None):
     """Split long messages into smaller chunks to avoid Telegram's 4096 character limit"""
+    # Handle empty, None, or invalid text
+    if not text or not isinstance(text, str) or not text.strip():
+        error_msg = "⚠️ Sorry, I encountered an issue generating a response. Please try again."
+        update.message.reply_text(error_msg, reply_markup=reply_markup)
+        return
+    
+    # Ensure text is a string and strip whitespace
+    text = str(text).strip()
+    
     max_length = 4000  # Leave some buffer for safety
     
     if len(text) <= max_length:

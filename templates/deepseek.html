@@ -1,15 +1,164 @@
+<!DOCTYPE html>
+<html>
 <head>
-    <meta name="viewport"
-        content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <title>Deepseek Research Assistant - Inquisita Spark</title>
+    <style>
+        .chat-header {
+            background: linear-gradient(135deg, #4caf50 0%, #388e3c 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 12px;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .chat-form {
+            background-color: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+        .query-input {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            margin-bottom: 20px;
+            box-sizing: border-box;
+            min-height: 100px;
+            resize: vertical;
+            font-family: inherit;
+        }
+        .query-input:focus {
+            border-color: #4caf50;
+            outline: none;
+        }
+        .submit-btn {
+            background: linear-gradient(135deg, #4caf50 0%, #388e3c 100%);
+            color: white;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 18px;
+            cursor: pointer;
+            transition: transform 0.2s ease;
+            width: 100%;
+        }
+        .submit-btn:hover {
+            transform: translateY(-2px);
+        }
+        .capabilities {
+            background-color: #e8f5e8;
+            border-left: 4px solid #4caf50;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+        .examples {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .example-card {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .example-card:hover {
+            background-color: #e9ecef;
+            border-color: #4caf50;
+        }
+        .example-title {
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        .example-text {
+            color: #666;
+            font-size: 14px;
+            font-style: italic;
+        }
+        .model-info {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+    </style>
 </head>
 <body>
     <div class="container">
-    <h2>Deepseek chatbot</h2>
-        <form action="/deepseek_reply" method="post">
-            <p>Please enter your query</p>
-            <input type="text" name="q">
-            <input type="submit" value="Enter">
-        </form>
+        <div class="chat-header">
+            <h1>🧠 Deepseek R1 Research Assistant</h1>
+            <p>Powered by Groq • Enhanced with ArXiv Research Tools</p>
+        </div>
+        
+        <div class="model-info">
+            <strong>Model:</strong> Deepseek R1 Distill Llama 70B • <strong>Provider:</strong> Groq • <strong>Research:</strong> ArXiv MCP Server
+        </div>
+        
+        <div class="capabilities">
+            <h3>🔬 Advanced Research Capabilities</h3>
+            <p>This powerful AI assistant can automatically:</p>
+            <ul>
+                <li><strong>Search ArXiv papers</strong> with sophisticated understanding of research topics</li>
+                <li><strong>Analyze and synthesize</strong> complex academic information</li>
+                <li><strong>Provide detailed insights</strong> from multiple research sources</li>
+                <li><strong>Reason through problems</strong> using the latest academic literature</li>
+            </ul>
+            <p><em>Ask complex research questions - Deepseek excels at deep analysis and reasoning!</em></p>
+        </div>
+        
+        <div class="chat-form">
+            <form action="/deepseek" method="post">
+                <label for="q" style="font-weight: bold; margin-bottom: 10px; display: block;">Ask me complex research questions or analytical tasks:</label>
+                <textarea name="q" id="q" class="query-input" placeholder="Example: Compare different approaches to quantum error correction in recent papers, or analyze the evolution of transformer architectures." required></textarea>
+                <button type="submit" class="submit-btn">🧠 Ask Deepseek</button>
+            </form>
+        </div>
+        
+        <div class="examples">
+            <div class="example-card" onclick="fillExample('Compare recent approaches to quantum error correction and their effectiveness')">
+                <div class="example-title">🔬 Comparative Analysis</div>
+                <div class="example-text">"Compare recent approaches to quantum error correction and their effectiveness"</div>
+            </div>
+            <div class="example-card" onclick="fillExample('Analyze the evolution of transformer architectures in the last 2 years')">
+                <div class="example-title">📈 Trend Analysis</div>
+                <div class="example-text">"Analyze the evolution of transformer architectures in the last 2 years"</div>
+            </div>
+            <div class="example-card" onclick="fillExample('What are the current limitations in large language model research?')">
+                <div class="example-title">🤔 Critical Analysis</div>
+                <div class="example-text">"What are the current limitations in large language model research?"</div>
+            </div>
+            <div class="example-card" onclick="fillExample('Synthesize findings from recent papers on reinforcement learning')">
+                <div class="example-title">📚 Research Synthesis</div>
+                <div class="example-text">"Synthesize findings from recent papers on reinforcement learning"</div>
+            </div>
+        </div>
+        
+        <div style="margin-top: 30px; text-align: center;">
+            <form action="/main" method="get" style="display: inline; margin-right: 10px;">
+                <input type="submit" value="← Back to Main Menu" style="background-color: #6c757d; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer;">
+            </form>
+            <form action="/llama" method="get" style="display: inline;">
+                <input type="submit" value="Try Llama Instead →" style="background-color: #ff9800; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer;">
+            </form>
+        </div>
     </div>
+    
+    <script>
+        function fillExample(text) {
+            document.getElementById('q').value = text;
+            document.getElementById('q').focus();
+        }
+    </script>
 </body>
+</html>

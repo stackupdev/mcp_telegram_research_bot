@@ -1,35 +1,192 @@
+<!DOCTYPE html>
+<html>
 <head>
-    <meta name="viewport"
-        content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="{{ url_for('static',
-        filename='styles.css') }}">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <title>Main Menu - Inquisita Spark</title>
+    <style>
+        .welcome-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 12px;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .menu-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 25px;
+            margin-bottom: 30px;
+        }
+        .menu-section {
+            background-color: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            border-left: 4px solid;
+        }
+        .research-section {
+            border-left-color: #2196f3;
+        }
+        .ai-section {
+            border-left-color: #ff9800;
+        }
+        .mobile-section {
+            border-left-color: #4caf50;
+        }
+        .section-title {
+            font-size: 1.4em;
+            margin-bottom: 15px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .section-description {
+            color: #666;
+            margin-bottom: 20px;
+            line-height: 1.5;
+        }
+        .menu-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .menu-btn {
+            background-color: #f8f9fa;
+            border: 2px solid #e9ecef;
+            color: #333;
+            padding: 15px 20px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: block;
+            text-align: center;
+        }
+        .menu-btn:hover {
+            background-color: #e9ecef;
+            border-color: #dee2e6;
+            transform: translateY(-2px);
+        }
+        .menu-btn.primary {
+            background-color: #007bff;
+            border-color: #007bff;
+            color: white;
+        }
+        .menu-btn.primary:hover {
+            background-color: #0056b3;
+            border-color: #0056b3;
+        }
+        .menu-btn.success {
+            background-color: #28a745;
+            border-color: #28a745;
+            color: white;
+        }
+        .menu-btn.success:hover {
+            background-color: #218838;
+            border-color: #218838;
+        }
+        .menu-btn.warning {
+            background-color: #ffc107;
+            border-color: #ffc107;
+            color: #212529;
+        }
+        .menu-btn.warning:hover {
+            background-color: #e0a800;
+            border-color: #e0a800;
+        }
+        .user-greeting {
+            font-size: 1.2em;
+            margin-bottom: 10px;
+        }
+        .quick-stats {
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+    </style>
 </head>
 <body>
     <div class="container">
-    <h2>Main Menu</h2>
-        <form action="/llama" method="post">
-            <input type="submit" value="LLAMA chatbot via Groq">
-        </form>
-        <form action="/deepseek" method="post">
-            <input type="submit" value="Deepseek chatbot">
-        </form>
-        <hr>
-        <h3>Academic Research (Powered by Remote MCP Server)</h3>
-        <form action="/search" method="get">
-            <input type="submit" value="Search Papers">
-        </form>
-        <form action="/papers" method="get">
-            <input type="submit" value="View Papers by Topic">
-        </form>
-        <form action="/topics" method="get">
-            <input type="submit" value="List Topics">
-        </form>
-        <hr>
-        <form action="https://t.me/InquisitaSparkBot" method="get" target="_blank">
-            <input type="submit" value="Telegram Bot">
-        </form>
-        <form action="/telegram" method="get">
-            <input type="submit" value="Telegram Bot Info">
-        </form>
+        <div class="welcome-header">
+            {% if name and name != 'Guest' %}
+            <div class="user-greeting">Welcome back, {{ name }}! 👋</div>
+            {% else %}
+            <div class="user-greeting">Welcome to Inquisita Spark! 🔬</div>
+            {% endif %}
+            <p>Your AI-powered academic research companion</p>
+        </div>
+        
+        <div class="quick-stats">
+            <strong>🚀 Ready to explore?</strong> Choose from research tools, AI chat, or mobile access below
+        </div>
+        
+        <div class="menu-grid">
+            <!-- Research Section -->
+            <div class="menu-section research-section">
+                <div class="section-title">
+                    🔬 Academic Research
+                </div>
+                <div class="section-description">
+                    Search ArXiv papers, organize by topics, and discover academic insights powered by our MCP server.
+                </div>
+                <div class="menu-buttons">
+                    <form action="/research" method="get">
+                        <button type="submit" class="menu-btn primary">🔍 Start Research Portal</button>
+                    </form>
+                    <form action="/topics" method="get">
+                        <button type="submit" class="menu-btn">📚 Browse Topics</button>
+                    </form>
+                </div>
+            </div>
+            
+            <!-- AI Chat Section -->
+            <div class="menu-section ai-section">
+                <div class="section-title">
+                    🤖 AI Research Assistants
+                </div>
+                <div class="section-description">
+                    Chat with advanced AI models that can automatically search papers and provide research insights.
+                </div>
+                <div class="menu-buttons">
+                    <form action="/llama" method="get">
+                        <button type="submit" class="menu-btn warning">🦙 Chat with Llama 3.1</button>
+                    </form>
+                    <form action="/deepseek" method="get">
+                        <button type="submit" class="menu-btn warning">🧠 Chat with Deepseek R1</button>
+                    </form>
+                </div>
+            </div>
+            
+            <!-- Mobile Access Section -->
+            <div class="menu-section mobile-section">
+                <div class="section-title">
+                    📱 Mobile Access
+                </div>
+                <div class="section-description">
+                    Access all research tools on-the-go through our Telegram bot with full conversation memory.
+                </div>
+                <div class="menu-buttons">
+                    <form action="https://t.me/InquisitaSparkBot" method="get" target="_blank">
+                        <button type="submit" class="menu-btn success">💬 Open Telegram Bot</button>
+                    </form>
+                    <form action="/telegram" method="get">
+                        <button type="submit" class="menu-btn">ℹ️ Bot Information</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <div style="text-align: center; margin-top: 30px;">
+            <form action="/" method="get">
+                <input type="submit" value="← Back to Welcome" style="background-color: #6c757d; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer;">
+            </form>
+        </div>
     </div>
 </body>
+</html>

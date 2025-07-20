@@ -1,16 +1,164 @@
+<!DOCTYPE html>
+<html>
 <head>
-    <meta name="viewport"
-        content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="{{ url_for('static',
-        filename='styles.css') }}">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <title>Llama Research Assistant - Inquisita Spark</title>
+    <style>
+        .chat-header {
+            background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 12px;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .chat-form {
+            background-color: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+        .query-input {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            margin-bottom: 20px;
+            box-sizing: border-box;
+            min-height: 100px;
+            resize: vertical;
+            font-family: inherit;
+        }
+        .query-input:focus {
+            border-color: #ff9800;
+            outline: none;
+        }
+        .submit-btn {
+            background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);
+            color: white;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 18px;
+            cursor: pointer;
+            transition: transform 0.2s ease;
+            width: 100%;
+        }
+        .submit-btn:hover {
+            transform: translateY(-2px);
+        }
+        .capabilities {
+            background-color: #fff3e0;
+            border-left: 4px solid #ff9800;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+        .examples {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .example-card {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .example-card:hover {
+            background-color: #e9ecef;
+            border-color: #ff9800;
+        }
+        .example-title {
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        .example-text {
+            color: #666;
+            font-size: 14px;
+            font-style: italic;
+        }
+        .model-info {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+    </style>
 </head>
 <body>
     <div class="container">
-    <h2>LLAMA chatbot via groq</h2>
-        <form action="/llama_reply" method="post">
-            <p>Please enter your query</p>
-            <input type="text" name="q">
-            <input type="submit" value="Enter">
-        </form>
+        <div class="chat-header">
+            <h1>🦙 Llama 3.1 Research Assistant</h1>
+            <p>Powered by Groq • Enhanced with ArXiv Research Tools</p>
+        </div>
+        
+        <div class="model-info">
+            <strong>Model:</strong> Llama 3.1 8B Instant • <strong>Provider:</strong> Groq • <strong>Research:</strong> ArXiv MCP Server
+        </div>
+        
+        <div class="capabilities">
+            <h3>🔬 Research Capabilities</h3>
+            <p>This AI assistant can automatically:</p>
+            <ul>
+                <li><strong>Search ArXiv papers</strong> when you ask about research topics</li>
+                <li><strong>Retrieve paper details</strong> including abstracts, authors, and publication dates</li>
+                <li><strong>Organize research</strong> by topics and provide comprehensive summaries</li>
+                <li><strong>Answer questions</strong> using the latest academic literature</li>
+            </ul>
+            <p><em>Just ask naturally - the AI will automatically use research tools when needed!</em></p>
+        </div>
+        
+        <div class="chat-form">
+            <form action="/llama" method="post">
+                <label for="q" style="font-weight: bold; margin-bottom: 10px; display: block;">Ask me anything about research or general topics:</label>
+                <textarea name="q" id="q" class="query-input" placeholder="Example: What are the latest developments in quantum computing? Or: Explain machine learning to me." required></textarea>
+                <button type="submit" class="submit-btn">🚀 Ask Llama</button>
+            </form>
+        </div>
+        
+        <div class="examples">
+            <div class="example-card" onclick="fillExample('What are the latest papers on quantum computing?')">
+                <div class="example-title">🔬 Research Query</div>
+                <div class="example-text">"What are the latest papers on quantum computing?"</div>
+            </div>
+            <div class="example-card" onclick="fillExample('Explain neural networks and find recent papers about transformers')">
+                <div class="example-title">🧠 Learning + Research</div>
+                <div class="example-text">"Explain neural networks and find recent papers about transformers"</div>
+            </div>
+            <div class="example-card" onclick="fillExample('What topics have been researched so far?')">
+                <div class="example-title">📚 Browse Topics</div>
+                <div class="example-text">"What topics have been researched so far?"</div>
+            </div>
+            <div class="example-card" onclick="fillExample('Summarize recent developments in artificial intelligence')">
+                <div class="example-title">📊 Research Summary</div>
+                <div class="example-text">"Summarize recent developments in artificial intelligence"</div>
+            </div>
+        </div>
+        
+        <div style="margin-top: 30px; text-align: center;">
+            <form action="/main" method="get" style="display: inline; margin-right: 10px;">
+                <input type="submit" value="← Back to Main Menu" style="background-color: #6c757d; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer;">
+            </form>
+            <form action="/deepseek" method="get" style="display: inline;">
+                <input type="submit" value="Try Deepseek Instead →" style="background-color: #28a745; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer;">
+            </form>
+        </div>
     </div>
+    
+    <script>
+        function fillExample(text) {
+            document.getElementById('q').value = text;
+            document.getElementById('q').focus();
+        }
+    </script>
 </body>
+</html>

@@ -1,14 +1,186 @@
+<!DOCTYPE html>
+<html>
 <head>
-    <meta name="viewport"
-        content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="{{ url_for('static',
-        filename='styles.css') }}">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <title>Llama Response - Inquisita Spark</title>
+    <style>
+        .response-header {
+            background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .response-content {
+            background-color: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+        .response-text {
+            color: #333;
+            font-size: 16px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .continue-chat {
+            background-color: #fff3e0;
+            border-left: 4px solid #ff9800;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+        .follow-up-form {
+            background-color: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+        .follow-input {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            margin-bottom: 15px;
+            box-sizing: border-box;
+            min-height: 80px;
+            resize: vertical;
+            font-family: inherit;
+        }
+        .follow-input:focus {
+            border-color: #ff9800;
+            outline: none;
+        }
+        .action-buttons {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        .action-btn {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: block;
+            text-align: center;
+        }
+        .btn-primary {
+            background-color: #ff9800;
+            color: white;
+        }
+        .btn-primary:hover {
+            background-color: #f57c00;
+            transform: translateY(-2px);
+        }
+        .btn-secondary {
+            background-color: #f8f9fa;
+            color: #333;
+            border: 2px solid #e9ecef;
+        }
+        .btn-secondary:hover {
+            background-color: #e9ecef;
+            border-color: #dee2e6;
+        }
+        .btn-success {
+            background-color: #28a745;
+            color: white;
+        }
+        .btn-success:hover {
+            background-color: #218838;
+        }
+        .quick-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        .quick-btn {
+            background-color: #6c757d;
+            color: white;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            text-decoration: none;
+        }
+        .quick-btn:hover {
+            background-color: #545b62;
+        }
+    </style>
 </head>
 <body>
     <div class="container">
-        <h2>LLAMA reply : {{r}}</h2>
-        <form action="/main" method="post">
-            <input type="submit" value="Main">
-        </form>
+        <div class="response-header">
+            <h1>🦙 Llama Response</h1>
+            <p>Powered by Groq • Enhanced with Research Tools</p>
+        </div>
+        
+        <div class="response-content">
+            <div class="response-text">{{ r }}</div>
+        </div>
+        
+        <div class="continue-chat">
+            <h3>💬 Continue the Conversation</h3>
+            <p>Ask follow-up questions, request more details, or explore related research topics!</p>
+        </div>
+        
+        <div class="follow-up-form">
+            <form action="/llama" method="post">
+                <label for="q" style="font-weight: bold; margin-bottom: 10px; display: block;">Ask a follow-up question:</label>
+                <textarea name="q" id="q" class="follow-input" placeholder="Ask for more details, related papers, or a different perspective..." required></textarea>
+                <button type="submit" class="action-btn btn-primary">🚀 Continue with Llama</button>
+            </form>
+        </div>
+        
+        <div class="action-buttons">
+            <form action="/deepseek" method="post">
+                <input type="hidden" name="q" value="{{ r[:100] }}... Can you provide a different perspective on this?">
+                <button type="submit" class="action-btn btn-success">🧠 Get Deepseek's Perspective</button>
+            </form>
+            
+            <form action="/research" method="get">
+                <button type="submit" class="action-btn btn-secondary">🔍 Search More Papers</button>
+            </form>
+            
+            <form action="/topics" method="get">
+                <button type="submit" class="action-btn btn-secondary">📚 Browse Research Topics</button>
+            </form>
+        </div>
+        
+        <div class="quick-actions">
+            <a href="/llama" class="quick-btn">🔄 New Llama Chat</a>
+            <a href="/main" class="quick-btn">🏠 Main Menu</a>
+            <a href="https://t.me/InquisitaSparkBot" target="_blank" class="quick-btn">💬 Telegram Bot</a>
+        </div>
     </div>
+    
+    <script>
+        // Auto-focus on the follow-up input
+        document.getElementById('q').focus();
+        
+        // Add some example follow-up questions
+        const examples = [
+            "Can you find more recent papers on this topic?",
+            "What are the limitations of this approach?",
+            "How does this compare to other methods?",
+            "What are the practical applications?"
+        ];
+        
+        function addExample(text) {
+            document.getElementById('q').value = text;
+        }
+    </script>
 </body>
+</html>
