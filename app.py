@@ -1151,13 +1151,20 @@ def send_onboarding_research_suggestions(update):
         # Generate button labels for the research questions
         button_labels = generate_button_labels_from_hints(research_questions)
         
-        # Create inline keyboard with research topic buttons
+        # Create inline keyboard with research topic buttons in 2-column layout
         keyboard = []
         user_id = update.effective_user.id
         
+        # Arrange buttons in rows of 2 for better layout
+        buttons = []
         for i, (question, button_text) in enumerate(zip(research_questions, button_labels)):
             callback_data = f"onboard_{i}_{user_id}"
-            keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
+            buttons.append(InlineKeyboardButton(button_text, callback_data=callback_data))
+        
+        # Group buttons into rows of 2
+        for i in range(0, len(buttons), 2):
+            row = buttons[i:i+2]  # Take up to 2 buttons per row
+            keyboard.append(row)
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
@@ -1460,23 +1467,20 @@ def start(update, context):
         update,
         f"🔬 Welcome to Inquisita Spark Research Assistant, {user_name}!\n\n" +
         f"{get_conversation_status(user_id)}\n\n" +
-        "🤖 **Intelligent Research Chat:**\n" +
+        "🤖 Intelligent Research Chat:\n" +
         "• Chat naturally with LLAMA or Deepseek\n" +
         "• AI automatically searches ArXiv papers when needed\n" +
         "• Get research insights in conversational format\n\n" +
-        "📚 **Manual Research Tools:**\n" +
+        "📚 Manual Research Tools:\n" +
         "• Direct paper search and topic browsing\n" +
         "• Detailed paper information retrieval\n\n" +
-        "💡 **Just ask questions like:**\n" +
+        "💡 Just ask questions like:\n" +
         "• \"What are the latest papers on quantum computing?\"\n" +
         "• \"Find research about neural networks\"\n" +
         "• \"Tell me about recent AI developments\"\n\n" +
-        "**Choose an AI assistant below to start chatting!**",
+        "Choose an AI assistant below to start chatting!",
         reply_markup=reply_markup
     )
-    
-    # Show trending research topics as clickable buttons for new users
-    send_onboarding_research_suggestions(update)
 
 def help_command(update, context):
     user_id = update.effective_user.id
@@ -1637,11 +1641,14 @@ def llama_command(update, context):
         reply_markup = update_keyboard(user_id)
         send_telegram_message(
             update, 
-            f"🤖 **LLama Research Assistant**\n\n{get_conversation_status(user_id)}\n\n"
+            f"🤖 LLama Research Assistant\n\n{get_conversation_status(user_id)}\n\n"
             f"I can help you with research questions and general chat. I have access to ArXiv papers and can search for academic research automatically when needed.\n\n"
             f"Just ask me anything! You can continue chatting by typing messages directly.",
             reply_markup=reply_markup
         )
+        
+        # Show trending research topics as clickable buttons for users who just selected LLama
+        send_onboarding_research_suggestions(update)
         return
         
     q = ' '.join(context.args)
@@ -1705,11 +1712,14 @@ def deepseek_command(update, context):
         reply_markup = update_keyboard(user_id)
         send_telegram_message(
             update, 
-            f"🧠 **Deepseek Research Assistant**\n\n{get_conversation_status(user_id)}\n\n"
+            f"🧠 Deepseek Research Assistant\n\n{get_conversation_status(user_id)}\n\n"
             f"I can help you with research questions and general chat. I have access to ArXiv papers and can search for academic research automatically when needed.\n\n"
             f"Just ask me anything! You can continue chatting by typing messages directly.",
             reply_markup=reply_markup
         )
+        
+        # Show trending research topics as clickable buttons for users who just selected Deepseek
+        send_onboarding_research_suggestions(update)
         return
         
     q = ' '.join(context.args)
