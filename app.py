@@ -758,7 +758,26 @@ def send_animated_search_message(update):
     import time
     import threading
     
-    chat_id = update.effective_chat.id
+    # Handle different input types
+    if update is None:
+        print("Warning: No update object provided for animation")
+        return None
+    
+    # Extract chat_id based on input type
+    if hasattr(update, 'effective_chat'):
+        # Standard Update object
+        chat_id = update.effective_chat.id
+        bot = update.effective_chat.bot
+    elif isinstance(update, int):
+        # Direct chat_id passed
+        chat_id = update
+        bot = TELEGRAM_BOT
+        if not bot:
+            print("Warning: No bot available for animation")
+            return None
+    else:
+        print(f"Warning: Invalid update type for animation: {type(update)}")
+        return None
     
     def animate_search():
         search_frames = [
@@ -772,7 +791,7 @@ def send_animated_search_message(update):
         
         try:
             # Send initial message using bot directly to get message object
-            message = update.effective_chat.bot.send_message(
+            message = bot.send_message(
                 chat_id=chat_id,
                 text=search_frames[0]
             )
@@ -786,10 +805,10 @@ def send_animated_search_message(update):
             # Cycle through the animation frames continuously until stopped
             frame_index = 1
             while animation_states.get(chat_id, {}).get('active', False):
-                time.sleep(0.1)
+                time.sleep(0.5)  # Slower animation for better UX
                 try:
                     # Edit the message to show animation
-                    update.effective_chat.bot.edit_message_text(
+                    bot.edit_message_text(
                         chat_id=chat_id,
                         message_id=message.message_id,
                         text=search_frames[frame_index]
@@ -806,7 +825,11 @@ def send_animated_search_message(update):
         except Exception as e:
             # If animation fails completely, fall back to simple message
             print(f"Animation failed: {e}")
-            send_telegram_message(update, "🔍 Searching for relevant research...")
+            try:
+                if hasattr(update, 'effective_chat'):
+                    send_telegram_message(update, "🔍 Searching for relevant research...")
+            except:
+                pass  # Graceful fallback if even simple message fails
         finally:
             # Clean up animation state
             if chat_id in animation_states:
@@ -819,11 +842,10 @@ def send_animated_search_message(update):
     
     return thread
 
-def stop_search_animation(update):
+def stop_search_animation(chat_id):
     """
     Stop the animated search message for a specific chat
     """
-    chat_id = update.effective_chat.id
     if chat_id in animation_states:
         animation_states[chat_id]['active'] = False
 
