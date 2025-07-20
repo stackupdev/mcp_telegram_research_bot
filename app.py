@@ -283,47 +283,90 @@ def get_topic_papers(topic: str):
     try:
         # Get the topic papers resource via MCP using async helper
         topic_formatted = topic.lower().replace(" ", "_")
+        print(f"=== DEBUG: get_topic_papers() called for topic: '{topic}' ===")
+        print(f"DEBUG: Formatted topic: '{topic_formatted}'")
+        print(f"DEBUG: Requesting resource: papers://{topic_formatted}")
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         result = loop.run_until_complete(read_mcp_resource(f"papers://{topic_formatted}"))
         loop.close()
+        print(f"DEBUG: Raw result from topic resource: {result}")
+        print(f"DEBUG: Result type: {type(result)}")
+        
+        # Handle MCP ReadResourceResult object
+        text_content = None
+        if hasattr(result, 'contents') and result.contents:
+            # Extract text from the first content item
+            first_content = result.contents[0]
+            if hasattr(first_content, 'text'):
+                text_content = first_content.text
+                print(f"DEBUG: Extracted markdown text content: {text_content[:200]}...")
+        elif isinstance(result, str):
+            text_content = result
+            print(f"DEBUG: Got string result: {text_content[:200]}...")
+        
+        if not text_content:
+            print("DEBUG: No text content found in result")
+            return []
+            
+        # Check for no papers message
+        if "No papers found" in text_content or "No topics found" in text_content:
+            print("DEBUG: No papers found message detected")
+            return []
         
         # Parse the markdown content to extract paper information
-        if isinstance(result, str):
-            if "No papers found" in result:
-                return []
+        papers = []
+        lines = text_content.split('\n')
+        current_paper = {}
+        
+        print(f"DEBUG: Parsing {len(lines)} lines of markdown content")
+        
+        for i, line in enumerate(lines):
+            line = line.strip()
             
-            # Try to extract paper data from the markdown
-            # This is a simplified parser - you might want to enhance it
-            papers = []
-            lines = result.split('\n')
-            current_paper = {}
-            
-            for line in lines:
-                line = line.strip()
-                if line.startswith('## ') and not line.startswith('## Papers on'):
-                    # New paper title
-                    if current_paper:
-                        papers.append(current_paper)
-                    current_paper = {'title': line[3:]}
-                elif line.startswith('- **Paper ID**:'):
-                    current_paper['id'] = line.split(':', 1)[1].strip()
-                elif line.startswith('- **Authors**:'):
-                    authors_str = line.split(':', 1)[1].strip()
-                    current_paper['authors'] = [a.strip() for a in authors_str.split(',')]
-                elif line.startswith('- **Published**:'):
-                    current_paper['published'] = line.split(':', 1)[1].strip()
-                elif line.startswith('### Summary'):
-                    # Next non-empty line should be the summary
-                    continue
-                elif current_paper and 'summary' not in current_paper and line and not line.startswith('-'):
-                    current_paper['summary'] = line.replace('...', '')
-            
-            if current_paper:
-                papers.append(current_paper)
-            
-            return papers
-        return []
+            if line.startswith('## ') and not line.startswith('## Papers on'):
+                # New paper title
+                if current_paper and 'title' in current_paper:
+                    papers.append(current_paper)
+                    print(f"DEBUG: Added paper: {current_paper.get('title', 'Unknown')}")
+                current_paper = {'title': line[3:]}
+                
+            elif line.startswith('- **Paper ID**:'):
+                paper_id = line.split(':', 1)[1].strip()
+                current_paper['id'] = paper_id
+                current_paper['entry_id'] = f"https://arxiv.org/abs/{paper_id}"
+                
+            elif line.startswith('- **Authors**:'):
+                authors_str = line.split(':', 1)[1].strip()
+                current_paper['authors'] = [author.strip() for author in authors_str.split(',')]
+                
+            elif line.startswith('- **Published**:'):
+                current_paper['published'] = line.split(':', 1)[1].strip()
+                
+            elif line.startswith('- **PDF URL**:'):
+                # Extract URL from markdown link format [url](url)
+                url_part = line.split(':', 1)[1].strip()
+                if '[' in url_part and '](' in url_part:
+                    current_paper['pdf_url'] = url_part.split('](')[1].rstrip(')')
+                else:
+                    current_paper['pdf_url'] = url_part
+                    
+            elif line.startswith('### Summary'):
+                # Next non-empty line should be the summary
+                continue
+                
+            elif (current_paper and 'summary' not in current_paper and 
+                  line and not line.startswith('-') and not line.startswith('#') and 
+                  not line.startswith('Total papers:') and line != '---'):
+                current_paper['summary'] = line.replace('...', '')
+        
+        # Don't forget the last paper
+        if current_paper and 'title' in current_paper:
+            papers.append(current_paper)
+            print(f"DEBUG: Added final paper: {current_paper.get('title', 'Unknown')}")
+        
+        print(f"DEBUG: Successfully parsed {len(papers)} papers from markdown")
+        return papers
     except Exception as e:
         print(f"Error calling get_topic_papers via MCP: {e}")
         return []
