@@ -4,8 +4,8 @@ import asyncio
 from typing import List
 from flask import Flask, render_template, request, jsonify
 from groq import Groq
-from telegram import Update, Bot, ReplyKeyboardMarkup, KeyboardButton
-from telegram.ext import Dispatcher, CommandHandler, MessageHandler, Filters
+from telegram import Update, Bot, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Dispatcher, CommandHandler, MessageHandler, Filters, CallbackQueryHandler
 from mcp.client.sse import sse_client
 from mcp.client.session import ClientSession
 
@@ -926,7 +926,15 @@ def get_deepseek_reply(messages: list, enable_tools: bool = True) -> str:
 
 def get_user_data(user_id):
     if user_id not in user_data:
-        user_data[user_id] = {}
+        user_data[user_id] = {
+            'llama_history': [],
+            'deepseek_history': [],
+            'last_model': None,
+            'auto_research': True  # Default to enabled
+        }
+    # Ensure auto_research setting exists for existing users
+    if 'auto_research' not in user_data[user_id]:
+        user_data[user_id]['auto_research'] = True
     return user_data[user_id]
 
 def truncate_conversation(messages, max_tokens=MAX_TOKENS):
@@ -1045,12 +1053,25 @@ def start(update, context):
     )
 
 def help_command(update, context):
+    user_id = update.effective_user.id
+    udata = get_user_data(user_id)
+    auto_research_status = "ON" if udata.get('auto_research', True) else "OFF"
+    
+    # Create inline keyboard for research toggle
+    keyboard = [[
+        InlineKeyboardButton(
+            f"🔬 Auto-Research: {auto_research_status} (Click to toggle)",
+            callback_data="toggle_research"
+        )
+    ]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
     send_telegram_message(update,
         "🤖 Inquisita Spark Research Assistant Help\n\n" +
         "🧠 Smart Chat (Recommended):\n" +
-        "/llama <question> - Chat with LLAMA (auto-research enabled)\n" +
-        "/deepseek <question> - Chat with Deepseek (auto-research enabled)\n" +
-        "💡 Just ask naturally! AI will search papers automatically when needed.\n\n" +
+        "/llama <question> - Chat with LLAMA\n" +
+        "/deepseek <question> - Chat with Deepseek\n" +
+        "💡 Just ask naturally! AI will search papers automatically when auto-research is enabled.\n\n" +
         "📚 Manual Research Commands:\n" +
         "/search <topic> - Search ArXiv papers directly\n" +
         "/papers <topic> - View papers for specific topic\n" +
@@ -1062,8 +1083,35 @@ def help_command(update, context):
         "✨ Example Questions:\n" +
         "• \"What's new in machine learning research?\"\n" +
         "• \"Find papers about quantum computing\"\n" +
-        "• \"Explain recent developments in AI safety\""
+        "• \"Explain recent developments in AI safety\"",
+        reply_markup=reply_markup
     )
+
+def toggle_research_callback(update, context):
+    """Handle the research toggle button callback"""
+    query = update.callback_query
+    user_id = query.from_user.id
+    udata = get_user_data(user_id)
+    
+    # Toggle the setting
+    udata['auto_research'] = not udata.get('auto_research', True)
+    new_status = "ON" if udata['auto_research'] else "OFF"
+    
+    # Update the button
+    keyboard = [[
+        InlineKeyboardButton(
+            f"🔬 Auto-Research: {new_status} (Click to toggle)",
+            callback_data="toggle_research"
+        )
+    ]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    # Answer the callback query and update the message
+    query.answer(f"Auto-research {new_status}")
+    query.edit_message_reply_markup(reply_markup=reply_markup)
+    
+    # Send confirmation message
+    send_telegram_message(query, f"🔬 Auto-research is now {new_status}. This affects how LLAMA and Deepseek respond to research-related questions.")
 
 def search_command(update, context):
     user_id = update.effective_user.id
@@ -1179,13 +1227,16 @@ def llama_command(update, context):
         }
         udata['llama_history'].insert(0, system_message)
     
-    # Send animated search indicator for research queries
+    # Check if auto-research is enabled for this user
+    auto_research_enabled = udata.get('auto_research', True)
+    
+    # Send animated search indicator for research queries (only if auto-research is enabled)
     search_thread = None
-    if any(keyword in q.lower() for keyword in ['paper', 'research', 'study', 'recent', 'latest', 'find', 'search', 'academic']):
+    if auto_research_enabled and any(keyword in q.lower() for keyword in ['paper', 'research', 'study', 'recent', 'latest', 'find', 'search', 'academic']):
         search_thread = send_animated_search_message(update)
     
-    # Get reply from LLAMA with function calling enabled
-    reply = get_llama_reply(udata['llama_history'], enable_tools=True)
+    # Get reply from LLAMA with function calling enabled/disabled based on user setting
+    reply = get_llama_reply(udata['llama_history'], enable_tools=auto_research_enabled)
     
     # Stop the search animation if it was started
     if search_thread:
@@ -1230,13 +1281,16 @@ def deepseek_command(update, context):
         }
         udata['deepseek_history'].insert(0, system_message)
     
-    # Send animated search indicator for research queries
+    # Check if auto-research is enabled for this user
+    auto_research_enabled = udata.get('auto_research', True)
+    
+    # Send animated search indicator for research queries (only if auto-research is enabled)
     search_thread = None
-    if any(keyword in q.lower() for keyword in ['paper', 'research', 'study', 'recent', 'latest', 'find', 'search', 'academic']):
+    if auto_research_enabled and any(keyword in q.lower() for keyword in ['paper', 'research', 'study', 'recent', 'latest', 'find', 'search', 'academic']):
         search_thread = send_animated_search_message(update)
     
-    # Get reply from Deepseek with function calling enabled
-    reply = get_deepseek_reply(udata['deepseek_history'], enable_tools=True)
+    # Get reply from Deepseek with function calling enabled/disabled based on user setting
+    reply = get_deepseek_reply(udata['deepseek_history'], enable_tools=auto_research_enabled)
     
     # Stop the search animation if it was started
     if search_thread:
