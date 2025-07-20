@@ -6,17 +6,26 @@
 </head>
 <body>
     <div class="container">
-    <h2>Main</h2>
+    <h2>Main Menu</h2>
         <form action="/llama" method="post">
-            <input type="submit" value="LLAMA chatbot via groq">
+            <input type="submit" value="LLAMA chatbot via Groq">
         </form>
         <form action="/deepseek" method="post">
             <input type="submit" value="Deepseek chatbot">
         </form>
-        <form action="/dbs" method="post">
-            <input type="submit" value="Predict DBS price">
+        <hr>
+        <h3>Academic Research (Powered by Remote MCP Server)</h3>
+        <form action="/search" method="get">
+            <input type="submit" value="Search Papers">
         </form>
-        <form action="https://t.me/GroqSeeker_Bot" method="get" target="_blank">
+        <form action="/papers" method="get">
+            <input type="submit" value="View Papers by Topic">
+        </form>
+        <form action="/topics" method="get">
+            <input type="submit" value="List Topics">
+        </form>
+        <hr>
+        <form action="https://t.me/InquisitaSparkBot" method="get" target="_blank">
             <input type="submit" value="Telegram Bot">
         </form>
         <form action="/telegram" method="get">

@@ -186,21 +186,19 @@ def start(update, context):
     user_id = update.effective_user.id
     user_name = update.effective_user.first_name or "there"
     
-    # Create custom keyboard with main options
+    # Create custom keyboard with LLM chat and MCP tools toggle
     keyboard = [
         [KeyboardButton("Chat with LLAMA"), KeyboardButton("Chat with Deepseek")],
-        [KeyboardButton("Search Papers"), KeyboardButton("View Topics")],
-        [KeyboardButton("Reset Conversation")]
+        [KeyboardButton("MCP Tools")]
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     
     send_telegram_message(
         update,
         f"Welcome to Inquisita Spark Research Bot, {user_name}!\n\n" +
-        "🔬 I can help you with:\n" +
-        "• Academic paper research via ArXiv\n" +
-        "• AI conversations with LLAMA & Deepseek\n" +
-        "• Organizing research by topics\n\n" +
+        "🔬 Academic research and AI chat features:\n" +
+        "• Chat with LLAMA or Deepseek\n" +
+        "• MCP Tools: Search papers, view by topic, list topics\n\n" +
         "Select an option below or use commands:\n" +
         "/search <topic> - Search academic papers\n" +
         "/papers <topic> - View papers for a topic\n" +
@@ -376,6 +374,27 @@ def message_handler(update, context):
     udata = get_user_data(user_id)
     text = update.message.text
     
+    # Toggle MCP Tools keyboard
+    if text == "MCP Tools":
+        mcp_keyboard = [
+            [KeyboardButton("Search Papers")],
+            [KeyboardButton("View Papers by Topic")],
+            [KeyboardButton("List Topics")],
+            [KeyboardButton("Back to Main Menu")]
+        ]
+        reply_markup = ReplyKeyboardMarkup(mcp_keyboard, resize_keyboard=True)
+        send_telegram_message(update, "MCP Tools: Select a research action.", reply_markup=reply_markup)
+        return
+    elif text == "Back to Main Menu":
+        # Show main keyboard again
+        main_keyboard = [
+            [KeyboardButton("Chat with LLAMA"), KeyboardButton("Chat with Deepseek")],
+            [KeyboardButton("MCP Tools")]
+        ]
+        reply_markup = ReplyKeyboardMarkup(main_keyboard, resize_keyboard=True)
+        send_telegram_message(update, "Main menu:", reply_markup=reply_markup)
+        return
+    
     # Handle keyboard button presses
     if text == "Chat with LLAMA":
         context.args = ["Hi,", "I'd", "like", "to", "chat"]
@@ -386,10 +405,10 @@ def message_handler(update, context):
     elif text == "Search Papers":
         send_telegram_message(update, "Please enter a research topic to search for.\nExample: machine learning, quantum computing, neural networks")
         return
-    elif text == "View Topics":
+    elif text == "View Papers by Topic":
         return topics_command(update, context)
-    elif text == "Reset Conversation":
-        return reset_command(update, context)
+    elif text == "List Topics":
+        return topics_command(update, context)
     
     # Default: treat as a question for the last used model or LLAMA
     model = udata.get('last_model', 'llama')
