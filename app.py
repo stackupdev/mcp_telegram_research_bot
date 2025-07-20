@@ -539,7 +539,7 @@ if telegram_dispatcher:
 # FLASK WEB ROUTES
 # ============================================================================
 
-@app.route('/webhook', methods=['POST'])
+@app.route('/telegram_webhook', methods=['POST'])
 def telegram_webhook():
     try:
         # Log that we received a webhook
