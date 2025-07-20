@@ -707,6 +707,9 @@ def get_llama_reply(messages: list, enable_tools: bool = True) -> str:
         
         return f"⚠️ Error from Groq API: {error_str}"
 
+# Global dictionary to track animation states
+animation_states = {}
+
 def send_animated_search_message(update):
     """
     Send an animated search message to indicate research is in progress
@@ -714,39 +717,59 @@ def send_animated_search_message(update):
     import time
     import threading
     
+    chat_id = update.effective_chat.id
+    
     def animate_search():
         search_frames = [
             "🔍 Searching for relevant research",
             "🔍 Searching for relevant research.",
             "🔍 Searching for relevant research..",
-            "🔍 Searching for relevant research..."
+            "🔍 Searching for relevant research...",
+            "🔍 Searching for relevant research....",
+            "🔍 Searching for relevant research....."
         ]
         
         try:
             # Send initial message using bot directly to get message object
             message = update.effective_chat.bot.send_message(
-                chat_id=update.effective_chat.id,
+                chat_id=chat_id,
                 text=search_frames[0]
             )
             
-            # Animate for a short duration
-            for i in range(1, 4):
+            # Store animation state
+            animation_states[chat_id] = {
+                'active': True,
+                'message_id': message.message_id
+            }
+            
+            # Cycle through the animation frames continuously until stopped
+            frame_index = 1
+            while animation_states.get(chat_id, {}).get('active', False):
                 time.sleep(0.1)
                 try:
                     # Edit the message to show animation
                     update.effective_chat.bot.edit_message_text(
-                        chat_id=update.effective_chat.id,
+                        chat_id=chat_id,
                         message_id=message.message_id,
-                        text=search_frames[i]
+                        text=search_frames[frame_index]
                     )
+                    # Cycle through frames
+                    frame_index = (frame_index + 1) % len(search_frames)
+                    if frame_index == 0:  # Skip the first frame (no dots) in cycling
+                        frame_index = 1
                 except Exception as e:
-                    # If editing fails, just continue
+                    # If editing fails, stop animation
                     print(f"Animation edit failed: {e}")
-                    pass
+                    break
+                
         except Exception as e:
             # If animation fails completely, fall back to simple message
             print(f"Animation failed: {e}")
             send_telegram_message(update, "🔍 Searching for relevant research...")
+        finally:
+            # Clean up animation state
+            if chat_id in animation_states:
+                del animation_states[chat_id]
     
     # Run animation in a separate thread to not block
     thread = threading.Thread(target=animate_search)
@@ -754,6 +777,14 @@ def send_animated_search_message(update):
     thread.start()
     
     return thread
+
+def stop_search_animation(update):
+    """
+    Stop the animated search message for a specific chat
+    """
+    chat_id = update.effective_chat.id
+    if chat_id in animation_states:
+        animation_states[chat_id]['active'] = False
 
 def clean_markdown_formatting(text: str) -> str:
     """
@@ -997,15 +1028,15 @@ def start(update, context):
     
     send_telegram_message(
         update,
-        f"🔬 **Welcome to Inquisita Spark Research Assistant, {user_name}!**\n\n" +
-        "🤖 **Intelligent Research Chat:**\n" +
+        f"🔬 Welcome to Inquisita Spark Research Assistant, {user_name}!\n\n" +
+        "🤖 Intelligent Research Chat:\n" +
         "• Chat naturally with LLAMA or Deepseek\n" +
         "• AI automatically searches ArXiv papers when needed\n" +
         "• Get research insights in conversational format\n\n" +
-        "📚 **Manual Research Tools:**\n" +
+        "📚 Manual Research Tools:\n" +
         "• Direct paper search and topic browsing\n" +
         "• Detailed paper information retrieval\n\n" +
-        "💡 **Just ask questions like:**\n" +
+        "💡 Just ask questions like:\n" +
         "• \"What are the latest papers on quantum computing?\"\n" +
         "• \"Find research about neural networks\"\n" +
         "• \"Tell me about recent AI developments\"\n\n" +
@@ -1015,20 +1046,20 @@ def start(update, context):
 
 def help_command(update, context):
     send_telegram_message(update,
-        "🤖 **Inquisita Spark Research Assistant Help**\n\n" +
-        "🧠 **Smart Chat (Recommended):**\n" +
+        "🤖 Inquisita Spark Research Assistant Help\n\n" +
+        "🧠 Smart Chat (Recommended):\n" +
         "/llama <question> - Chat with LLAMA (auto-research enabled)\n" +
         "/deepseek <question> - Chat with Deepseek (auto-research enabled)\n" +
-        "💡 *Just ask naturally! AI will search papers automatically when needed.*\n\n" +
-        "📚 **Manual Research Commands:**\n" +
+        "💡 Just ask naturally! AI will search papers automatically when needed.\n\n" +
+        "📚 Manual Research Commands:\n" +
         "/search <topic> - Search ArXiv papers directly\n" +
         "/papers <topic> - View papers for specific topic\n" +
         "/paper <id> - Get detailed paper information\n" +
         "/topics - List all available research topics\n\n" +
-        "🔧 **Utility Commands:**\n" +
+        "🔧 Utility Commands:\n" +
         "/reset - Clear conversation history\n" +
         "/help - Show this help message\n\n" +
-        "✨ **Example Questions:**\n" +
+        "✨ Example Questions:\n" +
         "• \"What's new in machine learning research?\"\n" +
         "• \"Find papers about quantum computing\"\n" +
         "• \"Explain recent developments in AI safety\""
@@ -1156,6 +1187,10 @@ def llama_command(update, context):
     # Get reply from LLAMA with function calling enabled
     reply = get_llama_reply(udata['llama_history'], enable_tools=True)
     
+    # Stop the search animation if it was started
+    if search_thread:
+        stop_search_animation(update)
+    
     # Only add assistant message to history if it's not an error
     if not reply.startswith("⚠️"):
         udata['llama_history'].append({"role": "assistant", "content": reply})
@@ -1202,6 +1237,10 @@ def deepseek_command(update, context):
     
     # Get reply from Deepseek with function calling enabled
     reply = get_deepseek_reply(udata['deepseek_history'], enable_tools=True)
+    
+    # Stop the search animation if it was started
+    if search_thread:
+        stop_search_animation(update)
     
     # Only add assistant message to history if it's not an error
     if not reply.startswith("⚠️"):
