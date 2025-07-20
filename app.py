@@ -542,25 +542,47 @@ if telegram_dispatcher:
 @app.route('/webhook', methods=['POST'])
 def telegram_webhook():
     try:
-        data = request.get_json(force=True)
-        print("Received Telegram update:", data)
+        # Log that we received a webhook
+        print("\n=== Received Telegram webhook ===")
         
         # Check if we have a valid token
-        if not TELEGRAM_BOT_TOKEN:
-            print("ERROR: TELEGRAM_BOT_TOKEN environment variable not set!")
-            return jsonify(success=False, error="Bot token not configured"), 500
+        if not TELEGRAM_BOT_TOKEN or not TELEGRAM_BOT:
+            error_msg = "ERROR: TELEGRAM_BOT_TOKEN environment variable not set or invalid!"
+            print(error_msg)
+            return jsonify(success=False, error=error_msg), 500
             
+        # Log headers for debugging
+        print(f"Headers: {dict(request.headers)}")
+        
+        # Get the JSON data
+        data = request.get_json(force=True)
+        print(f"Received update: {json.dumps(data, indent=2)}")
+        
+        if not data:
+            error_msg = "ERROR: No data received in webhook"
+            print(error_msg)
+            return jsonify(success=False, error=error_msg), 400
+            
+        # Process the update
         update = Update.de_json(data, TELEGRAM_BOT)
         if update:
             print(f"Processing update ID: {update.update_id}")
-            telegram_dispatcher.process_update(update)
+            try:
+                telegram_dispatcher.process_update(update)
+                print(f"Successfully processed update {update.update_id}")
+            except Exception as e:
+                print(f"ERROR processing update {update.update_id}: {str(e)}")
+                return jsonify(success=False, error=f"Error processing update: {str(e)}"), 500
         else:
             print("WARNING: Received invalid update format from Telegram")
+            return jsonify(success=False, error="Invalid update format"), 400
             
         return jsonify(success=True)
     except Exception as e:
-        print(f"ERROR in telegram_webhook: {str(e)}")
-        return jsonify(success=False, error=str(e)), 500
+        import traceback
+        error_msg = f"ERROR in telegram_webhook: {str(e)}\n{traceback.format_exc()}"
+        print(error_msg)
+        return jsonify(success=False, error=error_msg), 500
 
 @app.route('/')
 def index():
@@ -614,25 +636,22 @@ def web_topics():
     except Exception as e:
         return render_template('topics.html', error=f"Error loading topics: {str(e)}")
 
-@app.route('/llama')
+@app.route('/llama', methods=['GET', 'POST'])
 def llama():
+    if request.method == 'POST':
+        q = request.form.get("q")
+        if q:
+            messages = [{"role": "user", "content": q}]
+            reply = get_llama_reply(messages)
+            return render_template("llama_reply.html", r=reply)
     return render_template("llama.html")
 
-@app.route('/llama_reply', methods=["POST"])
-def llama_reply():
-    q = request.form.get("q")
-    messages = [{"role": "user", "content": q}]
-    reply = get_llama_reply(messages)
-    return render_template("llama_reply.html", r=reply)
-
-@app.route('/deepseek')
+@app.route('/deepseek', methods=['GET', 'POST'])
 def deepseek():
-    return render_template("deepseek.html")
-
-@app.route('/deepseek_reply', methods=["POST"])
-def deepseek_reply():
-    q = request.form.get("q")
-    messages = [{"role": "user", "content": q}]
+    if request.method == 'POST':
+        q = request.form.get("q")
+        if q:
+            messages = [{"role": "user", "content": q}]
     reply = get_deepseek_reply(messages)
     return render_template("deepseek_reply.html", r=reply)
 
