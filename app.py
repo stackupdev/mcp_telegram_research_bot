@@ -691,13 +691,8 @@ def get_llama_reply(messages: list, enable_tools: bool = True, update=None) -> s
         
         # Check if the model wants to call functions
         if message.tool_calls:
-            print(f"LLama wants to call {len(message.tool_calls)} function(s)")
-            
-            # Start animation since we know tools will be called
-            animation_started = False
-            if update:
-                send_animated_search_message(update)
-                animation_started = True
+            total_tools = len(message.tool_calls)
+            print(f"LLama wants to call {total_tools} function(s)")
             
             # Add the assistant's message with tool calls to conversation
             messages.append({
@@ -713,16 +708,36 @@ def get_llama_reply(messages: list, enable_tools: bool = True, update=None) -> s
                 } for tool_call in message.tool_calls]
             })
             
-            # Execute each tool call
-            for tool_call in message.tool_calls:
+            # Execute each tool call with progressive feedback
+            success_count = 0
+            for i, tool_call in enumerate(message.tool_calls, 1):
                 function_name = tool_call.function.name
                 try:
                     arguments = json.loads(tool_call.function.arguments)
                 except json.JSONDecodeError:
                     arguments = {}
                 
+                # Send starting status
+                if update:
+                    details = f"({i}/{total_tools})"
+                    if arguments.get('topic'):
+                        details += f" for '{arguments['topic']}'"
+                    elif arguments.get('paper_id'):
+                        details += f" for paper {arguments['paper_id']}"
+                    send_progressive_research_update(update, function_name, 'starting', details)
+                
                 # Execute the function
                 function_result = execute_function_call(function_name, arguments)
+                
+                # Send completion status
+                if update:
+                    if function_result.get('success'):
+                        success_count += 1
+                        result_details = function_result.get('summary', 'completed successfully')
+                        send_progressive_research_update(update, function_name, 'completed', result_details)
+                    else:
+                        error_msg = function_result.get('error', 'unknown error')
+                        send_progressive_research_update(update, function_name, 'completed', f"Error: {error_msg}")
                 
                 # Add the function result to conversation
                 messages.append({
@@ -737,9 +752,9 @@ def get_llama_reply(messages: list, enable_tools: bool = True, update=None) -> s
                 messages=messages
             )
             
-            # Stop animation now that tools have completed
-            if animation_started and update:
-                stop_search_animation(update.effective_chat.id)
+            # Send final completion message
+            if update:
+                finalize_research_feedback(update, total_tools, success_count)
             
             final_response = final_completion.choices[0].message.content
             
@@ -770,106 +785,132 @@ def get_llama_reply(messages: list, enable_tools: bool = True, update=None) -> s
         
         return f"⚠️ Error from Groq API: {error_str}"
 
-# Global dictionary to track animation states
+# Global dictionary to track progressive research feedback states
 animation_states = {}
 
-def send_animated_search_message(update):
+def send_progressive_research_update(update, tool_name, status, details=None):
     """
-    Send an animated search message to indicate research is in progress
+    Send progressive research feedback with specific tool status updates
     """
-    import time
-    import threading
+    if update is None:
+        return
     
     # Handle different input types
-    if update is None:
-        print("Warning: No update object provided for animation")
-        return None
-    
-    # Extract chat_id based on input type
     if hasattr(update, 'effective_chat'):
-        # Standard Update object
         chat_id = update.effective_chat.id
         bot = update.effective_chat.bot
     elif isinstance(update, int):
-        # Direct chat_id passed
         chat_id = update
         bot = TELEGRAM_BOT
         if not bot:
-            print("Warning: No bot available for animation")
-            return None
+            return
     else:
-        print(f"Warning: Invalid update type for animation: {type(update)}")
-        return None
+        return
     
-    def animate_search():
-        search_frames = [
-            "🔍 Searching for relevant research",
-            "🔍 Searching for relevant research.",
-            "🔍 Searching for relevant research..",
-            "🔍 Searching for relevant research...",
-            "🔍 Searching for relevant research....",
-            "🔍 Searching for relevant research....."
-        ]
-        
+    # Tool-specific status messages
+    tool_messages = {
+        'search_papers': {
+            'starting': '🔍 Searching ArXiv papers',
+            'processing': '📄 Analyzing search results',
+            'completed': '✅ Found papers'
+        },
+        'extract_info': {
+            'starting': '📋 Extracting paper details',
+            'processing': '🔬 Analyzing paper content',
+            'completed': '✅ Paper information extracted'
+        },
+        'get_topic_papers': {
+            'starting': '📚 Loading saved papers',
+            'processing': '📖 Organizing paper collection',
+            'completed': '✅ Papers loaded'
+        },
+        'get_available_folders': {
+            'starting': '📁 Scanning research topics',
+            'processing': '🗂️ Organizing topic list',
+            'completed': '✅ Topics loaded'
+        },
+        'get_research_prompt': {
+            'starting': '💡 Generating research prompt',
+            'processing': '✍️ Structuring research guidance',
+            'completed': '✅ Research prompt ready'
+        }
+    }
+    
+    # Get appropriate message
+    tool_msgs = tool_messages.get(tool_name, {
+        'starting': f'🔧 Executing {tool_name}',
+        'processing': f'⚙️ Processing {tool_name}',
+        'completed': f'✅ {tool_name} completed'
+    })
+    
+    base_message = tool_msgs.get(status, f'🔧 {tool_name}: {status}')
+    
+    # Add details if provided
+    if details:
+        message = f"{base_message} - {details}"
+    else:
+        message = base_message
+    
+    # Update existing animation message if active
+    if chat_id in animation_states and animation_states[chat_id].get('active'):
         try:
-            # Send initial message using bot directly to get message object
-            message = bot.send_message(
+            message_id = animation_states[chat_id]['message_id']
+            bot.edit_message_text(
                 chat_id=chat_id,
-                text=search_frames[0]
+                message_id=message_id,
+                text=message
             )
-            
-            # Store animation state
+        except Exception as e:
+            print(f"Failed to update progressive message: {e}")
+    else:
+        # Send new message if no animation is active
+        try:
+            sent_message = bot.send_message(chat_id=chat_id, text=message)
             animation_states[chat_id] = {
                 'active': True,
-                'message_id': message.message_id
+                'message_id': sent_message.message_id
             }
-            
-            # Cycle through the animation frames continuously until stopped
-            frame_index = 1
-            while animation_states.get(chat_id, {}).get('active', False):
-                time.sleep(0.5)  # Slower animation for better UX
-                try:
-                    # Edit the message to show animation
-                    bot.edit_message_text(
-                        chat_id=chat_id,
-                        message_id=message.message_id,
-                        text=search_frames[frame_index]
-                    )
-                    # Cycle through frames
-                    frame_index = (frame_index + 1) % len(search_frames)
-                    if frame_index == 0:  # Skip the first frame (no dots) in cycling
-                        frame_index = 1
-                except Exception as e:
-                    # If editing fails, stop animation
-                    print(f"Animation edit failed: {e}")
-                    break
-                
         except Exception as e:
-            # If animation fails completely, fall back to simple message
-            print(f"Animation failed: {e}")
-            try:
-                if hasattr(update, 'effective_chat'):
-                    send_telegram_message(update, "🔍 Searching for relevant research...")
-            except:
-                pass  # Graceful fallback if even simple message fails
-        finally:
-            # Clean up animation state
-            if chat_id in animation_states:
-                del animation_states[chat_id]
-    
-    # Run animation in a separate thread to not block
-    thread = threading.Thread(target=animate_search)
-    thread.daemon = True
-    thread.start()
-    
-    return thread
+            print(f"Failed to send progressive message: {e}")
 
-def stop_search_animation(chat_id):
+def finalize_research_feedback(update, total_tools, success_count):
     """
-    Stop the animated search message for a specific chat
+    Send final research completion message
     """
-    if chat_id in animation_states:
-        animation_states[chat_id]['active'] = False
+    if update is None:
+        return
+    
+    # Handle different input types
+    if hasattr(update, 'effective_chat'):
+        chat_id = update.effective_chat.id
+        bot = update.effective_chat.bot
+    elif isinstance(update, int):
+        chat_id = update
+        bot = TELEGRAM_BOT
+        if not bot:
+            return
+    else:
+        return
+    
+    # Create completion message
+    if success_count == total_tools:
+        final_message = f"🎉 Research complete! Successfully executed {success_count} research operations."
+    else:
+        final_message = f"⚠️ Research completed with {success_count}/{total_tools} successful operations."
+    
+    # Update the animation message with final status
+    if chat_id in animation_states and animation_states[chat_id].get('active'):
+        try:
+            message_id = animation_states[chat_id]['message_id']
+            bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=message_id,
+                text=final_message
+            )
+            # Mark animation as completed
+            animation_states[chat_id]['active'] = False
+        except Exception as e:
+            print(f"Failed to finalize research message: {e}")
 
 def clean_markdown_formatting(text: str) -> str:
     """
@@ -1262,13 +1303,8 @@ def get_deepseek_reply(messages: list, enable_tools: bool = True, update=None) -
         
         # Check if the model wants to call functions
         if message.tool_calls:
-            print(f"Deepseek wants to call {len(message.tool_calls)} function(s)")
-            
-            # Start animation since we know tools will be called
-            animation_started = False
-            if update:
-                send_animated_search_message(update)
-                animation_started = True
+            total_tools = len(message.tool_calls)
+            print(f"Deepseek wants to call {total_tools} function(s)")
             
             # Add the assistant's message with tool calls to conversation
             messages.append({
@@ -1284,16 +1320,36 @@ def get_deepseek_reply(messages: list, enable_tools: bool = True, update=None) -
                 } for tool_call in message.tool_calls]
             })
             
-            # Execute each tool call
-            for tool_call in message.tool_calls:
+            # Execute each tool call with progressive feedback
+            success_count = 0
+            for i, tool_call in enumerate(message.tool_calls, 1):
                 function_name = tool_call.function.name
                 try:
                     arguments = json.loads(tool_call.function.arguments)
                 except json.JSONDecodeError:
                     arguments = {}
                 
+                # Send starting status
+                if update:
+                    details = f"({i}/{total_tools})"
+                    if arguments.get('topic'):
+                        details += f" for '{arguments['topic']}'"
+                    elif arguments.get('paper_id'):
+                        details += f" for paper {arguments['paper_id']}"
+                    send_progressive_research_update(update, function_name, 'starting', details)
+                
                 # Execute the function
                 function_result = execute_function_call(function_name, arguments)
+                
+                # Send completion status
+                if update:
+                    if function_result.get('success'):
+                        success_count += 1
+                        result_details = function_result.get('summary', 'completed successfully')
+                        send_progressive_research_update(update, function_name, 'completed', result_details)
+                    else:
+                        error_msg = function_result.get('error', 'unknown error')
+                        send_progressive_research_update(update, function_name, 'completed', f"Error: {error_msg}")
                 
                 # Add the function result to conversation
                 messages.append({
@@ -1308,9 +1364,9 @@ def get_deepseek_reply(messages: list, enable_tools: bool = True, update=None) -
                 messages=messages
             )
             
-            # Stop animation now that tools have completed
-            if animation_started and update:
-                stop_search_animation(update.effective_chat.id)
+            # Send final completion message
+            if update:
+                finalize_research_feedback(update, total_tools, success_count)
             
             final_response = final_completion.choices[0].message.content
             
