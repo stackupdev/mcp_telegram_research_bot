@@ -172,17 +172,37 @@ def extract_info(paper_id: str):
         result = loop.run_until_complete(call_mcp_tool("extract_info", paper_id=paper_id))
         loop.close()
         
-        if isinstance(result, str) and result.startswith("There's no saved information"):
-            return {"error": result}
-        # If result is a JSON string, parse it
-        if isinstance(result, str):
-            try:
-                return json.loads(result)
-            except json.JSONDecodeError:
-                return {"error": result}
+        # Handle CallToolResult objects
+        if hasattr(result, 'content') and result.content:
+            content = result.content
+            if isinstance(content, list) and len(content) > 0:
+                # Extract text from first TextContent object
+                first_item = content[0]
+                if hasattr(first_item, 'text'):
+                    text_content = first_item.text
+                else:
+                    text_content = str(first_item)
+            else:
+                text_content = str(content)
+        elif isinstance(result, str):
+            text_content = result
         elif result is None:
             return {"error": "No result from MCP tool"}
-        return result
+        else:
+            text_content = str(result)
+        
+        # Check for error messages
+        if isinstance(text_content, str) and text_content.startswith("There's no saved information"):
+            return {"error": text_content}
+        
+        # Try to parse as JSON
+        if isinstance(text_content, str):
+            try:
+                return json.loads(text_content)
+            except json.JSONDecodeError:
+                return {"error": text_content}
+        
+        return {"error": "Unexpected result format"}
     except Exception as e:
         print(f"Error calling extract_info via MCP: {e}")
         return {"error": str(e)}
