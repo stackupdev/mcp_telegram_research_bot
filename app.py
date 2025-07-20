@@ -722,22 +722,31 @@ def send_animated_search_message(update):
             "🔍 Searching for relevant research..."
         ]
         
-        # Send initial message
-        message = send_telegram_message(update, search_frames[0])
-        
-        # Animate for a short duration
-        for i in range(1, 4):
-            time.sleep(0.5)
-            try:
-                # Edit the message to show animation
-                update.effective_chat.bot.edit_message_text(
-                    chat_id=update.effective_chat.id,
-                    message_id=message.message_id,
-                    text=search_frames[i]
-                )
-            except Exception:
-                # If editing fails, just continue
-                pass
+        try:
+            # Send initial message using bot directly to get message object
+            message = update.effective_chat.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=search_frames[0]
+            )
+            
+            # Animate for a short duration
+            for i in range(1, 4):
+                time.sleep(0.1)
+                try:
+                    # Edit the message to show animation
+                    update.effective_chat.bot.edit_message_text(
+                        chat_id=update.effective_chat.id,
+                        message_id=message.message_id,
+                        text=search_frames[i]
+                    )
+                except Exception as e:
+                    # If editing fails, just continue
+                    print(f"Animation edit failed: {e}")
+                    pass
+        except Exception as e:
+            # If animation fails completely, fall back to simple message
+            print(f"Animation failed: {e}")
+            send_telegram_message(update, "🔍 Searching for relevant research...")
     
     # Run animation in a separate thread to not block
     thread = threading.Thread(target=animate_search)
