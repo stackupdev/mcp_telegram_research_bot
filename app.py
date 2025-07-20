@@ -1027,10 +1027,13 @@ def send_telegram_message(update, text, reply_markup=None):
 def start(update, context):
     user_id = update.effective_user.id
     user_name = update.effective_user.first_name or "there"
+    udata = get_user_data(user_id)
+    auto_research_status = "ON" if udata.get('auto_research', True) else "OFF"
     
-    # Create simplified keyboard with just chat options
+    # Create keyboard with chat options and research toggle
     keyboard = [
-        [KeyboardButton("Chat with LLAMA"), KeyboardButton("Chat with Deepseek")]
+        [KeyboardButton("Chat with LLAMA"), KeyboardButton("Chat with Deepseek")],
+        [KeyboardButton(f"🔬 Research: {auto_research_status}")]
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     
@@ -1048,7 +1051,7 @@ def start(update, context):
         "• \"What are the latest papers on quantum computing?\"\n" +
         "• \"Find research about neural networks\"\n" +
         "• \"Tell me about recent AI developments\"\n\n" +
-        "Select a chat mode below or use /help for commands!",
+        "Select a chat mode below or toggle research mode!",
         reply_markup=reply_markup
     )
 
@@ -1309,12 +1312,37 @@ def reset_command(update, context):
     udata.pop('deepseek_history', None)
     send_telegram_message(update, "✅ Your chat history has been reset.")
 
+def update_keyboard(user_id):
+    """Update the custom keyboard with current research setting"""
+    udata = get_user_data(user_id)
+    auto_research_status = "ON" if udata.get('auto_research', True) else "OFF"
+    
+    keyboard = [
+        [KeyboardButton("Chat with LLAMA"), KeyboardButton("Chat with Deepseek")],
+        [KeyboardButton(f"🔬 Research: {auto_research_status}")]
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
 def message_handler(update, context):
     user_id = update.effective_user.id
     udata = get_user_data(user_id)
     text = update.message.text
     
-    # Removed MCP Tools keyboard - now using intelligent chat with automatic research
+    # Handle research toggle button
+    if text.startswith("🔬 Research:"):
+        # Toggle the research setting
+        udata['auto_research'] = not udata.get('auto_research', True)
+        new_status = "ON" if udata['auto_research'] else "OFF"
+        
+        # Update keyboard with new status
+        reply_markup = update_keyboard(user_id)
+        
+        send_telegram_message(
+            update,
+            f"🔬 Auto-research is now {new_status}. This affects how LLAMA and Deepseek respond to research-related questions.",
+            reply_markup=reply_markup
+        )
+        return
     
     # Handle keyboard button presses
     if text == "Chat with LLAMA":
@@ -1323,7 +1351,6 @@ def message_handler(update, context):
     elif text == "Chat with Deepseek":
         context.args = ["Hi,", "I'd", "like", "to", "chat"]
         return deepseek_command(update, context)
-    # Removed MCP Tools menu buttons - users can now use natural language or direct commands
     
     # Default: treat as a question for the last used model or LLAMA
     model = udata.get('last_model', 'llama')
