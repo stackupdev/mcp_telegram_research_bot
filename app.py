@@ -1489,6 +1489,7 @@ def web_search():
         return render_template('research.html', error="Please provide a research topic.")
     
     try:
+        print(f"=== DEBUG: web_search called with topic: '{topic}' ===")
         # First, search for papers and get their IDs
         paper_ids = search_papers(topic, max_results=10)
         print(f"Found {len(paper_ids)} paper IDs: {paper_ids}")
@@ -1497,7 +1498,9 @@ def web_search():
         
         if paper_ids:
             # Try to get papers from the topic first (in case they're already stored)
+            print(f"Trying to get stored papers for topic: '{topic}'")
             papers_info = get_topic_papers(topic)
+            print(f"get_topic_papers returned {len(papers_info) if isinstance(papers_info, list) else 'N/A'} papers")
             if papers_info and isinstance(papers_info, list) and len(papers_info) > 0:
                 papers_data = papers_info
                 print(f"Retrieved {len(papers_data)} papers from stored topic")
