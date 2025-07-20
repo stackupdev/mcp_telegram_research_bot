@@ -326,6 +326,47 @@ def get_topic_papers(topic: str):
         print(f"Error calling get_topic_papers via MCP: {e}")
         return []
 
+def get_research_prompt(topic: str, num_papers: int = 5) -> str:
+    """
+    Get a structured research prompt from the MCP server for enhanced AI research.
+    This uses the MCP prompt primitive to generate comprehensive research instructions.
+    """
+    if not mcp_client_factory:
+        print("MCP client factory not initialized")
+        return f"Search for {num_papers} academic papers about '{topic}' and provide a comprehensive analysis."
+    
+    try:
+        # Access the generate_search_prompt via MCP
+        print(f"Getting research prompt for topic: {topic}")
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        result = loop.run_until_complete(call_mcp_tool("generate_search_prompt", topic=topic, num_papers=num_papers))
+        loop.close()
+        
+        print(f"Prompt result: {result}")
+        
+        # Extract prompt content
+        if hasattr(result, 'content') and result.content:
+            content = result.content
+            if isinstance(content, list) and len(content) > 0:
+                first_item = content[0]
+                if hasattr(first_item, 'text'):
+                    return first_item.text
+                else:
+                    return str(first_item)
+            else:
+                return str(content)
+        elif isinstance(result, str):
+            return result
+        else:
+            # Fallback to basic prompt
+            return f"Search for {num_papers} academic papers about '{topic}' and provide a comprehensive analysis."
+            
+    except Exception as e:
+        print(f"Error getting research prompt via MCP: {e}")
+        # Fallback to basic prompt
+        return f"Search for {num_papers} academic papers about '{topic}' and provide a comprehensive analysis."
+
 # ============================================================================
 # FUNCTION CALLING INFRASTRUCTURE
 # ============================================================================
@@ -397,6 +438,28 @@ MCP_TOOLS = [
                 "type": "object",
                 "properties": {},
                 "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_research_prompt",
+            "description": "Generate a comprehensive research prompt for in-depth academic analysis. Use this when you want to provide structured, detailed research guidance for a topic.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "topic": {
+                        "type": "string",
+                        "description": "The research topic to generate a comprehensive prompt for"
+                    },
+                    "num_papers": {
+                        "type": "integer",
+                        "description": "Number of papers to include in the research analysis (default: 5)",
+                        "default": 5
+                    }
+                },
+                "required": ["topic"]
             }
         }
     }
@@ -510,6 +573,27 @@ def execute_function_call(function_name: str, arguments: dict):
                 "function": function_name,
                 "result": result,
                 "summary": f"Found {len(result)} available research topics"
+            }
+            
+        elif function_name == "get_research_prompt":
+            topic = arguments.get("topic")
+            if not topic or not isinstance(topic, str):
+                return {
+                    "success": False,
+                    "function": function_name,
+                    "error": "Topic parameter is required and must be a string"
+                }
+            
+            num_papers = arguments.get("num_papers", 5)
+            if not isinstance(num_papers, int) or num_papers < 1:
+                num_papers = 5
+            
+            result = get_research_prompt(topic, num_papers)
+            return {
+                "success": True,
+                "function": function_name,
+                "result": result,
+                "summary": f"Generated comprehensive research prompt for '{topic}' with {num_papers} papers"
             }
             
         else:
