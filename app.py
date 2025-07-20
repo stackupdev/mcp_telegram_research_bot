@@ -1449,30 +1449,29 @@ def start(update, context):
     user_id = update.effective_user.id
     user_name = update.effective_user.first_name or "there"
     udata = get_user_data(user_id)
-    auto_research_status = "ON" if udata.get('auto_research', True) else "OFF"
+    
+    # Initialize conversation mode to 'none' for new/returning users
+    set_conversation_mode(user_id, 'none')
     
     # Create keyboard with chat options and research toggle
-    keyboard = [
-        [KeyboardButton("Chat with LLAMA"), KeyboardButton("Chat with Deepseek")],
-        [KeyboardButton(f"🔬 Research: {auto_research_status}")]
-    ]
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    reply_markup = update_keyboard(user_id)
     
     send_telegram_message(
         update,
         f"🔬 Welcome to Inquisita Spark Research Assistant, {user_name}!\n\n" +
-        "🤖 Intelligent Research Chat:\n" +
+        f"{get_conversation_status(user_id)}\n\n" +
+        "🤖 **Intelligent Research Chat:**\n" +
         "• Chat naturally with LLAMA or Deepseek\n" +
         "• AI automatically searches ArXiv papers when needed\n" +
         "• Get research insights in conversational format\n\n" +
-        "📚 Manual Research Tools:\n" +
+        "📚 **Manual Research Tools:**\n" +
         "• Direct paper search and topic browsing\n" +
         "• Detailed paper information retrieval\n\n" +
-        "💡 Just ask questions like:\n" +
+        "💡 **Just ask questions like:**\n" +
         "• \"What are the latest papers on quantum computing?\"\n" +
         "• \"Find research about neural networks\"\n" +
         "• \"Tell me about recent AI developments\"\n\n" +
-        "Select a chat mode below or toggle research mode!",
+        "**Choose an AI assistant below to start chatting!**",
         reply_markup=reply_markup
     )
     
@@ -1626,8 +1625,8 @@ def llama_command(update, context):
     user_id = update.effective_user.id
     udata = get_user_data(user_id)
     
-    # Track which model was last used
-    udata['last_model'] = 'llama'
+    # Set conversation mode to llama when user uses direct command
+    set_conversation_mode(user_id, 'llama')
     
     # Initialize history if not present
     if 'llama_history' not in udata:
@@ -1635,7 +1634,14 @@ def llama_command(update, context):
     
     # Get the query from message
     if not context.args:
-        send_telegram_message(update, "🤖 **LLama Research Assistant**\n\nI can help you with research questions and general chat. I have access to ArXiv papers and can search for academic research automatically when needed.\n\nJust ask me anything!")
+        reply_markup = update_keyboard(user_id)
+        send_telegram_message(
+            update, 
+            f"🤖 **LLama Research Assistant**\n\n{get_conversation_status(user_id)}\n\n"
+            f"I can help you with research questions and general chat. I have access to ArXiv papers and can search for academic research automatically when needed.\n\n"
+            f"Just ask me anything! You can continue chatting by typing messages directly.",
+            reply_markup=reply_markup
+        )
         return
         
     q = ' '.join(context.args)
@@ -1687,8 +1693,8 @@ def deepseek_command(update, context):
     user_id = update.effective_user.id
     udata = get_user_data(user_id)
     
-    # Track which model was last used
-    udata['last_model'] = 'deepseek'
+    # Set conversation mode to deepseek when user uses direct command
+    set_conversation_mode(user_id, 'deepseek')
     
     # Initialize history if not present
     if 'deepseek_history' not in udata:
@@ -1696,7 +1702,14 @@ def deepseek_command(update, context):
     
     # Get the query from message
     if not context.args:
-        send_telegram_message(update, "🧠 **Deepseek Research Assistant**\n\nI can help you with research questions and general chat. I have access to ArXiv papers and can search for academic research automatically when needed.\n\nJust ask me anything!")
+        reply_markup = update_keyboard(user_id)
+        send_telegram_message(
+            update, 
+            f"🧠 **Deepseek Research Assistant**\n\n{get_conversation_status(user_id)}\n\n"
+            f"I can help you with research questions and general chat. I have access to ArXiv papers and can search for academic research automatically when needed.\n\n"
+            f"Just ask me anything! You can continue chatting by typing messages directly.",
+            reply_markup=reply_markup
+        )
         return
         
     q = ' '.join(context.args)
@@ -1766,9 +1779,48 @@ def prompt_command(update, context):
 def reset_command(update, context):
     user_id = update.effective_user.id
     udata = get_user_data(user_id)
+    
+    # Clear conversation histories
     udata.pop('llama_history', None)
     udata.pop('deepseek_history', None)
-    send_telegram_message(update, "✅ Your chat history has been reset.")
+    
+    # Reset conversation mode to 'none'
+    set_conversation_mode(user_id, 'none')
+    
+    # Update keyboard and send confirmation
+    reply_markup = update_keyboard(user_id)
+    send_telegram_message(
+        update, 
+        f"✅ **Chat History Reset**\n\n{get_conversation_status(user_id)}\n\n"
+        f"Your conversation history with both LLama and Deepseek has been cleared. "
+        f"Choose an AI assistant below to start a fresh conversation!",
+        reply_markup=reply_markup
+    )
+
+def set_conversation_mode(user_id, mode):
+    """Set explicit conversation mode: 'llama', 'deepseek', or 'none'"""
+    udata = get_user_data(user_id)
+    udata['conversation_mode'] = mode
+    if mode != 'none':
+        udata['last_model'] = mode
+    print(f"User {user_id} conversation mode set to: {mode}")
+
+def get_conversation_status(user_id):
+    """Get clear status message for user"""
+    udata = get_user_data(user_id)
+    mode = udata.get('conversation_mode', 'none')
+    research = "ON" if udata.get('auto_research', True) else "OFF"
+    
+    if mode == 'none':
+        return "💬 Ready to chat! Choose an AI assistant to start a conversation."
+    else:
+        return f"💬 Chatting with {mode.upper()} | Research: {research}"
+
+def is_in_conversation_mode(user_id):
+    """Check if user is currently in an active conversation mode"""
+    udata = get_user_data(user_id)
+    mode = udata.get('conversation_mode', 'none')
+    return mode in ['llama', 'deepseek']
 
 def update_keyboard(user_id):
     """Update the custom keyboard with current research setting"""
@@ -1797,27 +1849,42 @@ def message_handler(update, context):
         
         send_telegram_message(
             update,
-            f"🔬 Auto-research is now {new_status}. This affects how LLAMA and Deepseek respond to research-related questions.",
+            f"🔬 Auto-research is now {new_status}. This affects how LLAMA and Deepseek respond to research-related questions.\n\n{get_conversation_status(user_id)}",
             reply_markup=reply_markup
         )
         return
     
-    # Handle keyboard button presses
+    # Handle keyboard button presses for starting conversations
     if text == "Chat with LLAMA":
+        set_conversation_mode(user_id, 'llama')
         context.args = ["Hi,", "I'd", "like", "to", "chat"]
         return llama_command(update, context)
     elif text == "Chat with Deepseek":
+        set_conversation_mode(user_id, 'deepseek')
         context.args = ["Hi,", "I'd", "like", "to", "chat"]
         return deepseek_command(update, context)
     
-    # Default: treat as a question for the last used model or LLAMA
-    model = udata.get('last_model', 'llama')
-    if model == 'deepseek':
+    # Check if user is in an active conversation mode
+    if is_in_conversation_mode(user_id):
+        # User is in conversation mode, route to appropriate AI
+        mode = udata.get('conversation_mode', 'llama')
         context.args = text.split()
-        return deepseek_command(update, context)
+        
+        if mode == 'deepseek':
+            return deepseek_command(update, context)
+        else:
+            return llama_command(update, context)
     else:
-        context.args = text.split()
-        return llama_command(update, context)
+        # User is not in conversation mode, guide them to choose
+        reply_markup = update_keyboard(user_id)
+        send_telegram_message(
+            update,
+            f"🤖 **Choose an AI Assistant**\n\n{get_conversation_status(user_id)}\n\n"
+            f"**Your message:** _{text}_\n\n"
+            f"Please select **Chat with LLAMA** or **Chat with Deepseek** to start a conversation, "
+            f"or use specific commands like `/llama {text}` or `/deepseek {text}`.",
+            reply_markup=reply_markup
+        )
 
 # Register handlers with the dispatcher
 if telegram_dispatcher:
