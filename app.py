@@ -55,7 +55,7 @@ async def call_mcp_tool(tool_name: str, **kwargs):
             read_stream, write_stream = streams
             async with ClientSession(read_stream, write_stream) as session:
                 await session.initialize()
-                result = await session.call_tool(tool_name, **kwargs)
+                result = await session.call_tool(tool_name, arguments=kwargs)
                 return result
     except Exception as e:
         print(f"Error calling MCP tool {tool_name}: {e}")
