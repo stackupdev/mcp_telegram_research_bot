@@ -1069,7 +1069,7 @@ def send_interactive_hints(update, response: str, tools_used: list = None):
 
 def generate_button_labels_from_hints(hints: list) -> list:
     """
-    Generate concise, meaningful button labels from hint questions using LLM.
+    Generate concise, summarized questions from hint questions using LLM.
     """
     if not hints:
         return []
@@ -1080,21 +1080,21 @@ def generate_button_labels_from_hints(hints: list) -> list:
         # Create prompt for generating button labels
         hints_text = "\n".join([f"{i+1}. {hint}" for i, hint in enumerate(hints)])
         
-        label_prompt = f"""Convert these research questions into concise 2-3 word button labels with relevant emojis.
+        label_prompt = f"""Convert these research questions into concise, summarized questions that fit on buttons (max 6-8 words each).
 
-Questions:
+Original Questions:
 {hints_text}
 
-For each question, create a short, catchy button label that captures the essence. Format as:
-1. [emoji] [2-3 words]
-2. [emoji] [2-3 words]
+For each question, create a shorter, clearer version that maintains the key meaning. Keep emojis. Format as:
+1. [emoji] [concise question]
+2. [emoji] [concise question]
 
 Examples:
-- "What are quantum computing applications?" → "⚛️ Quantum Apps"
-- "How do neural networks work?" → "🧠 Neural Networks"
-- "What's new in climate research?" → "🌍 Climate Updates"
+- "📄 What are the latest developments in quantum computing research?" → "📄 Latest quantum computing developments?"
+- "⚖️ How do different machine learning approaches compare in accuracy?" → "⚖️ Compare ML approach accuracy?"
+- "🔧 What are the practical applications of this technology?" → "🔧 Practical applications?"
 
-Make labels specific to the actual question content, not generic categories."""
+Make questions specific, actionable, and button-friendly (6-8 words max)."""
         
         completion = client.chat.completions.create(
             model="llama-3.1-8b-instant",
