@@ -5,5 +5,5 @@ scikit-learn
 groq
 python-telegram-bot==13.15
 urllib3<2.0
-requests
 arxiv>=2.2.0
+mcp>=1.7.1

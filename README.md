@@ -1,17 +1,39 @@
-# DBS Prediction Web Service
+# Inquisita Spark Research Bot
 
-This is a Flask-based web application for making predictions using a trained model (`dbs.jl`) and interacting with the Groq API (LLM). The app features a simple web interface for users to input data, get model predictions, and interact with an LLM via the Groq API.
+A Telegram bot for academic research and AI-powered conversations, featuring integration with the MCP (Model Context Protocol) research server for paper searching and analysis. The bot provides a user-friendly interface for accessing research papers, managing topics, and interacting with advanced language models.
 
 ## Features
 
-- **Prediction Endpoint:** Enter a value and receive a model prediction.
-- **LLM Integration:** Ask questions and get responses from the Groq Llama model.
-- **Deepseek Chatbot:** Interact with the Deepseek model via the Groq API.
-- **Ready for Cloud Deployment:** Designed for easy deployment on Render.com.
+- **Academic Paper Search:** Find and organize research papers by topic
+- **MCP Research Server Integration:** Real-time paper search and retrieval
+- **AI Chat Capabilities:**
+  - Chat with LLAMA model
+  - Chat with Deepseek model
+  - Conversation history management
+- **Topic Management:**
+  - Browse papers by topic
+  - List available research topics
+  - View detailed paper information
+- **User-Friendly Interface:**
+  - Interactive keyboard menus
+  - Clear command structure
+  - Responsive design
 
-## How the App Works
+## Technical Stack
 
-### User Experience Flow
+- **Backend:** Python 3.12+
+- **Frameworks:**
+  - Flask (web server)
+  - python-telegram-bot (Telegram integration)
+  - MCP (Model Context Protocol)
+- **AI/ML:**
+  - Groq API (for LLM access)
+  - ArXiv API (for paper search)
+- **Deployment:**
+  - Render.com (or similar cloud platform)
+  - Gunicorn (WSGI server)
+
+## Getting Started
 
 1. **Landing Page (`/`)**: The user is greeted and asked to enter their name.
 2. **Main Menu (`/main`)**: After submitting their name, the user chooses between three options:

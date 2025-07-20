@@ -1,11 +1,11 @@
 import os
 import json
-import requests
 from typing import List
 from flask import Flask, render_template, request, jsonify
 from groq import Groq
 from telegram import Update, Bot, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Dispatcher, CommandHandler, MessageHandler, Filters
+from mcp.client.sse import sse_client
 
 # Flask app initialization
 app = Flask(__name__)
@@ -24,47 +24,149 @@ PAPER_DIR = "papers"
 # Maximum tokens to allow in conversation history before truncating
 MAX_TOKENS = 4000
 
-RESEARCH_SERVER_URL = "https://mcp-arxiv-server.onrender.com"
+RESEARCH_SERVER_URL = "https://mcp-arxiv-server.onrender.com/sse"
+
+# Initialize MCP client for SSE connection
+mcp_client = None
+
+def init_mcp_client():
+    """Initialize the MCP client connection"""
+    global mcp_client
+    try:
+        mcp_client = sse_client(RESEARCH_SERVER_URL)
+        print(f"MCP client initialized successfully for {RESEARCH_SERVER_URL}")
+    except Exception as e:
+        print(f"Failed to initialize MCP client: {e}")
+        mcp_client = None
+
+# Initialize MCP client at startup
+init_mcp_client()
 
 # ============================================================================
-# RESEARCH FUNCTIONALITY (via remote MCP server)
+# RESEARCH FUNCTIONALITY (via remote MCP server with SSE)
 # ============================================================================
 
 def search_papers(topic: str, max_results: int = 5) -> List[str]:
     """
-    Call the remote research server to search for papers on a topic.
+    Call the remote MCP server to search for papers on a topic.
     Returns: List of paper IDs
     """
-    resp = requests.post(f"{RESEARCH_SERVER_URL}/search_papers", json={"topic": topic, "max_results": max_results})
-    resp.raise_for_status()
-    return resp.json().get("paper_ids", [])
+    if not mcp_client:
+        print("MCP client not initialized")
+        return []
+    
+    try:
+        # Call the search_papers tool via MCP
+        result = mcp_client.call_tool("search_papers", topic=topic, max_results=max_results)
+        return result if isinstance(result, list) else []
+    except Exception as e:
+        print(f"Error calling search_papers via MCP: {e}")
+        return []
 
 def extract_info(paper_id: str):
     """
-    Call the remote research server to get info about a specific paper.
-    Returns: JSON string with paper info
+    Call the remote MCP server to get info about a specific paper.
+    Returns: Paper info as dict or error message
     """
-    resp = requests.get(f"{RESEARCH_SERVER_URL}/extract_info", params={"paper_id": paper_id})
-    resp.raise_for_status()
-    return resp.json()
+    if not mcp_client:
+        print("MCP client not initialized")
+        return {"error": "MCP client not available"}
+    
+    try:
+        # Call the extract_info tool via MCP
+        result = mcp_client.call_tool("extract_info", paper_id=paper_id)
+        if isinstance(result, str) and result.startswith("There's no saved information"):
+            return {"error": result}
+        # If result is a JSON string, parse it
+        if isinstance(result, str):
+            try:
+                return json.loads(result)
+            except json.JSONDecodeError:
+                return {"error": result}
+        return result
+    except Exception as e:
+        print(f"Error calling extract_info via MCP: {e}")
+        return {"error": str(e)}
 
 def get_available_folders():
     """
-    Call the remote research server to list all available topic folders.
+    Call the remote MCP server to list all available topic folders.
     Returns: List of topic folder names
     """
-    resp = requests.get(f"{RESEARCH_SERVER_URL}/get_available_folders")
-    resp.raise_for_status()
-    return resp.json().get("topics", [])
+    if not mcp_client:
+        print("MCP client not initialized")
+        return []
+    
+    try:
+        # Get the folders resource via MCP
+        result = mcp_client.read_resource("papers://folders")
+        # Parse the markdown content to extract folder names
+        if isinstance(result, str):
+            lines = result.split('\n')
+            folders = []
+            for line in lines:
+                if line.strip().startswith('- '):
+                    folder_name = line.strip()[2:]  # Remove '- ' prefix
+                    folders.append(folder_name)
+            return folders
+        return []
+    except Exception as e:
+        print(f"Error calling get_available_folders via MCP: {e}")
+        return []
 
 def get_topic_papers(topic: str):
     """
-    Call the remote research server to get all papers for a topic.
-    Returns: JSON string with all papers info
+    Call the remote MCP server to get all papers for a topic.
+    Returns: List of paper dictionaries
     """
-    resp = requests.get(f"{RESEARCH_SERVER_URL}/get_topic_papers", params={"topic": topic})
-    resp.raise_for_status()
-    return resp.json()
+    if not mcp_client:
+        print("MCP client not initialized")
+        return []
+    
+    try:
+        # Get the topic papers resource via MCP
+        topic_formatted = topic.lower().replace(" ", "_")
+        result = mcp_client.read_resource(f"papers://{topic_formatted}")
+        
+        # Parse the markdown content to extract paper information
+        if isinstance(result, str):
+            if "No papers found" in result:
+                return []
+            
+            # Try to extract paper data from the markdown
+            # This is a simplified parser - you might want to enhance it
+            papers = []
+            lines = result.split('\n')
+            current_paper = {}
+            
+            for line in lines:
+                line = line.strip()
+                if line.startswith('## ') and not line.startswith('## Papers on'):
+                    # New paper title
+                    if current_paper:
+                        papers.append(current_paper)
+                    current_paper = {'title': line[3:]}
+                elif line.startswith('- **Paper ID**:'):
+                    current_paper['id'] = line.split(':', 1)[1].strip()
+                elif line.startswith('- **Authors**:'):
+                    authors_str = line.split(':', 1)[1].strip()
+                    current_paper['authors'] = [a.strip() for a in authors_str.split(',')]
+                elif line.startswith('- **Published**:'):
+                    current_paper['published'] = line.split(':', 1)[1].strip()
+                elif line.startswith('### Summary'):
+                    # Next non-empty line should be the summary
+                    continue
+                elif current_paper and 'summary' not in current_paper and line and not line.startswith('-'):
+                    current_paper['summary'] = line.replace('...', '')
+            
+            if current_paper:
+                papers.append(current_paper)
+            
+            return papers
+        return []
+    except Exception as e:
+        print(f"Error calling get_topic_papers via MCP: {e}")
+        return []
 
 # ============================================================================
 # LLM FUNCTIONALITY (Groq API)
@@ -246,11 +348,11 @@ def papers_command(update, context):
         return
     topic = " ".join(args)
     try:
-        papers_info = get_topic_papers(topic)
-        if not papers_info:
+        papers_data = get_topic_papers(topic)
+        if not papers_data:
             send_telegram_message(update, f"No papers found for topic '{topic}'.")
             return
-        papers_data = papers_info
+        
         response = f"📚 Papers on '{topic}' ({len(papers_data)} found):\n\n"
         for i, paper in enumerate(papers_data, 1):
             response += f"{i}. **{paper.get('title', 'Unknown Title')}**\n"
