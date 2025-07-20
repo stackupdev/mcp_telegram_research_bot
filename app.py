@@ -1494,19 +1494,6 @@ def start(update, context):
     )
 
 def help_command(update, context):
-    user_id = update.effective_user.id
-    udata = get_user_data(user_id)
-    auto_research_status = "ON" if udata.get('auto_research', True) else "OFF"
-    
-    # Create inline keyboard for research toggle
-    keyboard = [[
-        InlineKeyboardButton(
-            f"🔬 Auto-Research: {auto_research_status} (Click to toggle)",
-            callback_data="toggle_research"
-        )
-    ]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
     send_telegram_message(update,
         "🤖 Inquisita Spark Research Assistant Help\n\n" +
         "🧠 Smart Chat (Recommended):\n" +
@@ -1525,8 +1512,7 @@ def help_command(update, context):
         "✨ Example Questions:\n" +
         "• \"What's new in machine learning research?\"\n" +
         "• \"Find papers about quantum computing\"\n" +
-        "• \"Explain recent developments in AI safety\"",
-        reply_markup=reply_markup
+        "• \"Explain recent developments in AI safety\""
     )
 
 def toggle_research_callback(update, context):
@@ -1900,9 +1886,9 @@ def message_handler(update, context):
         reply_markup = update_keyboard(user_id)
         send_telegram_message(
             update,
-            f"🤖 **Choose an AI Assistant**\n\n{get_conversation_status(user_id)}\n\n"
-            f"**Your message:** _{text}_\n\n"
-            f"Please select **Chat with LLAMA** or **Chat with Deepseek** to start a conversation, "
+            f"🤖 Choose an AI Assistant\n\n{get_conversation_status(user_id)}\n\n"
+            f"Your message: {text}\n\n"
+            f"Please select Chat with LLAMA or Chat with Deepseek to start a conversation, "
             f"or use specific commands like `/llama {text}` or `/deepseek {text}`.",
             reply_markup=reply_markup
         )
