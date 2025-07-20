@@ -291,86 +291,66 @@ def get_topic_papers(topic: str):
         
         # Parse the markdown content to extract paper information
         papers = []
-        lines = text_content.split('\n')
-        current_paper = {}
-        in_summary = False
         
-        for line in lines:
-            line = line.strip()
-            
-            if line.startswith('## ') and not line.startswith('## Papers on'):
-                # New paper title
-                if current_paper and 'title' in current_paper:
-                    papers.append(current_paper)
-                current_paper = {'title': line[3:]}
-                in_summary = False
-                
-            elif line.startswith('- **Paper ID**:'):
-                paper_id = line.split(':', 1)[1].strip()
-                current_paper['id'] = paper_id
-                current_paper['entry_id'] = f"https://arxiv.org/abs/{paper_id}"
-                in_summary = False
-                
-            elif line.startswith('- **Authors**:'):
-                authors_str = line.split(':', 1)[1].strip()
-                current_paper['authors'] = [author.strip() for author in authors_str.split(',')]
-                in_summary = False
-                
-            elif line.startswith('- **Published**:'):
-                current_paper['published'] = line.split(':', 1)[1].strip()
-                in_summary = False
-                
-            elif line.startswith('- **PDF URL**:'):
-                # Extract URL from markdown link format [url](url)
-                url_part = line.split(':', 1)[1].strip()
-                if '[' in url_part and '](' in url_part:
-                    current_paper['pdf_url'] = url_part.split('](')[1].rstrip(')')
-                else:
-                    current_paper['pdf_url'] = url_part
-                in_summary = False
-                    
-            elif line.startswith('### Summary'):
-                # Start collecting summary lines
-                in_summary = True
-                current_paper['summary'] = ''
+        # Split content by paper sections (## titles)
+        sections = text_content.split('## ')
+        
+        for section in sections[1:]:  # Skip first empty section
+            if not section.strip() or section.startswith('Papers on'):
                 continue
                 
-            elif in_summary and line:
-                # Collect all summary lines - be more permissive about what we collect
-                # Stop only on clear section boundaries
-                if line.startswith('## ') and not line.startswith('## Papers on'):
-                    # This is a new paper, stop collecting summary
-                    in_summary = False
-                    # Process this line as a new paper title
-                    if current_paper and 'title' in current_paper:
-                        papers.append(current_paper)
-                    current_paper = {'title': line[3:]}
-                elif line.startswith('---') or line.startswith('Total papers:'):
-                    # End of section
-                    in_summary = False
-                else:
-                    # Continue collecting summary text
-                    if 'summary' not in current_paper:
-                        current_paper['summary'] = ''
-                    if current_paper['summary']:
-                        current_paper['summary'] += ' '
-                    current_paper['summary'] += line.replace('...', '').strip()
+            lines = section.strip().split('\n')
+            if not lines:
+                continue
                 
-            elif line.startswith('## ') and not line.startswith('## Papers on'):
-                # New paper title (handle case where we're not in summary mode)
-                if not in_summary:
-                    if current_paper and 'title' in current_paper:
-                        papers.append(current_paper)
-                    current_paper = {'title': line[3:]}
-                in_summary = False
-                
-            elif line.startswith('---') or line.startswith('Total papers:'):
-                # End of current paper or section
-                in_summary = False
-        
-        # Don't forget the last paper
-        if current_paper and 'title' in current_paper:
-            papers.append(current_paper)
+            current_paper = {}
+            
+            # First line is the title
+            current_paper['title'] = lines[0].strip()
+            
+            # Process the rest of the lines
+            summary_started = False
+            summary_lines = []
+            
+            for line in lines[1:]:
+                line = line.strip()
+                if not line:
+                    continue
+                    
+                if line.startswith('- **Paper ID**:'):
+                    paper_id = line.split(':', 1)[1].strip()
+                    current_paper['id'] = paper_id
+                    current_paper['entry_id'] = f"https://arxiv.org/abs/{paper_id}"
+                    
+                elif line.startswith('- **Authors**:'):
+                    authors_str = line.split(':', 1)[1].strip()
+                    current_paper['authors'] = [author.strip() for author in authors_str.split(',')]
+                    
+                elif line.startswith('- **Published**:'):
+                    current_paper['published'] = line.split(':', 1)[1].strip()
+                    
+                elif line.startswith('- **PDF URL**:'):
+                    # Extract URL from markdown link format [url](url)
+                    url_part = line.split(':', 1)[1].strip()
+                    if '[' in url_part and '](' in url_part:
+                        current_paper['pdf_url'] = url_part.split('](')[1].rstrip(')')
+                    else:
+                        current_paper['pdf_url'] = url_part
+                        
+                elif line.startswith('### Summary'):
+                    summary_started = True
+                    
+                elif summary_started and not line.startswith('---') and not line.startswith('Total papers:'):
+                    # Collect ALL lines after ### Summary until end of section
+                    summary_lines.append(line.replace('...', '').strip())
+            
+            # Join all summary lines with spaces
+            if summary_lines:
+                current_paper['summary'] = ' '.join(summary_lines)
+            
+            # Only add papers that have a title and at least one other field
+            if current_paper.get('title') and len(current_paper) > 1:
+                papers.append(current_paper)
         
         return papers
     except Exception as e:
