@@ -1433,8 +1433,11 @@ def llama_command(update, context):
     # Only add assistant message to history if it's not an error
     if not reply.startswith("⚠️"):
         udata['llama_history'].append({"role": "assistant", "content": reply})
+    
+    # Add LLM-powered follow-up hints to the reply
+    reply_with_hints = add_follow_up_hints(reply)
         
-    send_telegram_message(update, reply)
+    send_telegram_message(update, reply_with_hints)
 
 def deepseek_command(update, context):
     user_id = update.effective_user.id
@@ -1489,8 +1492,11 @@ def deepseek_command(update, context):
     # Only add assistant message to history if it's not an error
     if not reply.startswith("⚠️"):
         udata['deepseek_history'].append({"role": "assistant", "content": reply})
+    
+    # Add LLM-powered follow-up hints to the reply
+    reply_with_hints = add_follow_up_hints(reply)
         
-    send_telegram_message(update, reply)
+    send_telegram_message(update, reply_with_hints)
 
 def prompt_command(update, context):
     """Generate a comprehensive research prompt for a topic"""
