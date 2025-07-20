@@ -668,7 +668,15 @@ def message_handler(update, context):
         send_telegram_message(update, "Please enter a research topic to search for.\nExample: machine learning, quantum computing, neural networks")
         return
     elif text == "View Papers by Topic":
-        return topics_command(update, context)
+        # Set user state to expect topic input for viewing papers
+        udata['awaiting_topic_selection'] = True
+        topics = get_available_folders()
+        if not topics:
+            send_telegram_message(update, "No topics available. Search for papers first to create topics.")
+            return
+        topic_list = "\n".join([f"• {topic}" for topic in topics])
+        send_telegram_message(update, f"Available topics:\n{topic_list}\n\nPlease enter the topic name to view papers:")
+        return
     elif text == "List Topics":
         return topics_command(update, context)
     
@@ -677,6 +685,12 @@ def message_handler(update, context):
         udata['awaiting_search'] = False  # Clear the state
         context.args = [text]  # Set the search topic
         return search_command(update, context)
+    
+    # Check if user is awaiting topic selection for viewing papers
+    if udata.get('awaiting_topic_selection', False):
+        udata['awaiting_topic_selection'] = False  # Clear the state
+        context.args = [text]  # Set the topic name
+        return papers_command(update, context)
     
     # Default: treat as a question for the last used model or LLAMA
     model = udata.get('last_model', 'llama')
