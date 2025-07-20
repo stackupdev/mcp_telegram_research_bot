@@ -600,7 +600,8 @@ def get_llama_reply(messages: list, enable_tools: bool = True) -> str:
             if not final_response or not final_response.strip():
                 return "I found some research results but had trouble formatting the response. Please try asking your question again."
             
-            return final_response
+            # Format thinking tags nicely
+            return format_deepseek_thinking(final_response)
         
         # No function calls, return regular response
         response = message.content
@@ -609,7 +610,8 @@ def get_llama_reply(messages: list, enable_tools: bool = True) -> str:
         if not response or not response.strip():
             return "I'm having trouble generating a response right now. Please try asking your question again."
             
-        return response
+        # Format thinking tags nicely
+        return format_deepseek_thinking(response)
         
     except Exception as e:
         error_str = str(e)
@@ -620,6 +622,25 @@ def get_llama_reply(messages: list, enable_tools: bool = True) -> str:
             return "⚠️ Your conversation history is too long for the model's token limit. Please use /reset to start a new conversation, or ask a shorter question."
         
         return f"⚠️ Error from Groq API: {error_str}"
+
+def format_deepseek_thinking(text: str) -> str:
+    """
+    Format Deepseek's <think>...</think> tags nicely for Telegram display
+    """
+    import re
+    
+    # Pattern to match <think>...</think> tags
+    think_pattern = r'<think>(.*?)</think>'
+    
+    def replace_think_tags(match):
+        thinking_content = match.group(1).strip()
+        # Format as a nice collapsible section with emoji
+        return f"\n🤔 **Thinking Process:**\n```\n{thinking_content}\n```\n"
+    
+    # Replace all <think>...</think> tags with formatted versions
+    formatted_text = re.sub(think_pattern, replace_think_tags, text, flags=re.DOTALL)
+    
+    return formatted_text
 
 def get_deepseek_reply(messages: list, enable_tools: bool = True) -> str:
     """
@@ -690,7 +711,8 @@ def get_deepseek_reply(messages: list, enable_tools: bool = True) -> str:
             if not final_response or not final_response.strip():
                 return "I found some research results but had trouble formatting the response. Please try asking your question again."
             
-            return final_response
+            # Format thinking tags nicely
+            return format_deepseek_thinking(final_response)
         
         # No function calls, return regular response
         response = message.content
@@ -699,7 +721,8 @@ def get_deepseek_reply(messages: list, enable_tools: bool = True) -> str:
         if not response or not response.strip():
             return "I'm having trouble generating a response right now. Please try asking your question again."
             
-        return response
+        # Format thinking tags nicely
+        return format_deepseek_thinking(response)
         
     except Exception as e:
         error_str = str(e)
@@ -920,9 +943,18 @@ def topics_command(update, context):
     try:
         topics = get_available_folders()
         if not topics:
-            send_telegram_message(update, "No topics available.")
+            send_telegram_message(update, "📭 No topics available yet.\n\nStart by asking me to search for papers on topics you're interested in!")
             return
-        msg = "Available topics:\n" + "\n".join(topics)
+        
+        # Format topic names nicely (convert underscores to spaces and title case)
+        formatted_topics = []
+        for topic in topics:
+            # Convert underscores to spaces and use title case
+            formatted_name = topic.replace("_", " ").title()
+            formatted_topics.append(f"📚 {formatted_name}")
+        
+        msg = f"📖 **Available Research Topics** ({len(topics)} total):\n\n" + "\n".join(formatted_topics)
+        msg += "\n\n💡 *Use `/papers <topic>` to view papers for any topic*"
         send_telegram_message(update, msg)
     except Exception as e:
         print(f"Error in topics_command: {str(e)}")
