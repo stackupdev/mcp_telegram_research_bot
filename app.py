@@ -6,7 +6,7 @@ from typing import List
 from flask import Flask, render_template, request, jsonify
 from groq import Groq
 from telegram import Update, Bot, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Dispatcher, CommandHandler, MessageHandler, Filters
+from telegram.ext import Dispatcher, CommandHandler, MessageHandler, CallbackQueryHandler, Filters
 from mcp.client.sse import sse_client
 from mcp.client.session import ClientSession
 
@@ -987,17 +987,60 @@ Format as a simple list, one question per line, without numbering or bullets. Ea
             "🔧 How is this being applied in practice?"
         ]
 
-def add_follow_up_hints(response: str, tools_used: list = None) -> str:
+def send_interactive_hints(update, response: str, tools_used: list = None):
     """
-    Helper function to add LLM-generated follow-up hints to a response.
+    Generate and send LLM-powered follow-up hints as interactive buttons.
+    Each button reveals a question when clicked.
     """
     hints = generate_llm_follow_up_hints("", response, tools_used)
     
     if hints:
-        hints_text = "\n\n💡 **What to explore next:**\n" + "\n".join([f"• {hint}" for hint in hints])
-        return response + hints_text
+        # Create inline keyboard with hint buttons
+        keyboard = []
+        for i, hint in enumerate(hints):
+            # Create button text (first few words + emoji)
+            button_text = hint[:50] + "..." if len(hint) > 50 else hint
+            callback_data = f"hint_{i}_{update.effective_user.id}"
+            keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        # Send message with interactive hint buttons
+        send_telegram_message(
+            update, 
+            "💡 What to explore next? Click a question below:", 
+            reply_markup=reply_markup
+        )
+        
+        # Store hints in user data for callback handling
+        user_id = update.effective_user.id
+        udata = get_user_data(user_id)
+        udata['current_hints'] = hints
+
+def handle_hint_callback(update, context):
+    """
+    Handle callback when user clicks on a hint button.
+    """
+    query = update.callback_query
+    query.answer()  # Acknowledge the callback
     
-    return response
+    # Parse callback data: hint_{index}_{user_id}
+    callback_data = query.data
+    if callback_data.startswith('hint_'):
+        parts = callback_data.split('_')
+        if len(parts) >= 3:
+            hint_index = int(parts[1])
+            user_id = int(parts[2])
+            
+            # Get user's stored hints
+            udata = get_user_data(user_id)
+            hints = udata.get('current_hints', [])
+            
+            if hint_index < len(hints):
+                hint_question = hints[hint_index]
+                
+                # Send the full hint question as a new message
+                query.message.reply_text(hint_question)
 
 def get_deepseek_reply(messages: list, enable_tools: bool = True, update=None) -> str:
     """
@@ -1434,10 +1477,12 @@ def llama_command(update, context):
     if not reply.startswith("⚠️"):
         udata['llama_history'].append({"role": "assistant", "content": reply})
     
-    # Add LLM-powered follow-up hints to the reply
-    reply_with_hints = add_follow_up_hints(reply)
-        
-    send_telegram_message(update, reply_with_hints)
+    # Send the main response
+    send_telegram_message(update, reply)
+    
+    # Send LLM-powered follow-up hints as separate messages
+    if not reply.startswith("⚠️"):  # Only send hints for successful responses
+        send_interactive_hints(update, reply)
 
 def deepseek_command(update, context):
     user_id = update.effective_user.id
@@ -1493,10 +1538,12 @@ def deepseek_command(update, context):
     if not reply.startswith("⚠️"):
         udata['deepseek_history'].append({"role": "assistant", "content": reply})
     
-    # Add LLM-powered follow-up hints to the reply
-    reply_with_hints = add_follow_up_hints(reply)
-        
-    send_telegram_message(update, reply_with_hints)
+    # Send the main response
+    send_telegram_message(update, reply)
+    
+    # Send LLM-powered follow-up hints as separate messages
+    if not reply.startswith("⚠️"):  # Only send hints for successful responses
+        send_interactive_hints(update, reply)
 
 def prompt_command(update, context):
     """Generate a comprehensive research prompt for a topic"""
@@ -1585,6 +1632,8 @@ if telegram_dispatcher:
     telegram_dispatcher.add_handler(CommandHandler("llama", llama_command))
     telegram_dispatcher.add_handler(CommandHandler("deepseek", deepseek_command))
     telegram_dispatcher.add_handler(CommandHandler("reset", reset_command))
+    # Add callback handler for interactive hint buttons
+    telegram_dispatcher.add_handler(CallbackQueryHandler(handle_hint_callback))
     # Add handler for regular text messages (must be added last)
     telegram_dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, message_handler))
 
