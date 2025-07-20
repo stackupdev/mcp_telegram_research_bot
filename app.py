@@ -86,7 +86,7 @@ async def read_mcp_resource(uri: str):
 # RESEARCH FUNCTIONALITY (via remote MCP server with SSE)
 # ============================================================================
 
-def search_papers(topic: str, max_results: int = 5) -> List[str]:
+def search_papers(topic: str, max_results: int = 10) -> List[str]:
     """
     Call the remote MCP server to search for papers on a topic.
     Returns: List of paper IDs
@@ -356,7 +356,7 @@ def get_topic_papers(topic: str):
         print(f"Error calling get_topic_papers via MCP: {e}")
         return []
 
-def get_research_prompt(topic: str, num_papers: int = 5) -> str:
+def get_research_prompt(topic: str, num_papers: int = 10) -> str:
     """
     Get a structured research prompt from the MCP server for enhanced AI research.
     This uses the MCP prompt primitive to generate comprehensive research instructions.
@@ -417,8 +417,8 @@ MCP_TOOLS = [
                     },
                     "max_results": {
                         "type": "integer",
-                        "description": "Maximum number of papers to return (default: 5, max: 10)",
-                        "default": 5
+                        "description": "Maximum number of papers to return (default: 10, max: 10)",
+                        "default": 10
                     }
                 },
                 "required": ["topic"]
@@ -485,8 +485,8 @@ MCP_TOOLS = [
                     },
                     "num_papers": {
                         "type": "integer",
-                        "description": "Number of papers to include in the research analysis (default: 5)",
-                        "default": 5
+                        "description": "Number of papers to include in the research analysis (default: 10)",
+                        "default": 10
                     }
                 },
                 "required": ["topic"]
@@ -523,12 +523,12 @@ def execute_function_call(function_name: str, arguments: dict):
                     "error": "Topic parameter is required and must be a string"
                 }
             
-            max_results = arguments.get("max_results", 5)
+            max_results = arguments.get("max_results", 10)
             try:
                 max_results = int(max_results)
                 max_results = max(1, min(max_results, 10))  # Clamp between 1-10
             except (ValueError, TypeError):
-                max_results = 5
+                max_results = 10
             
             result = search_papers(topic, max_results)
             
@@ -614,9 +614,9 @@ def execute_function_call(function_name: str, arguments: dict):
                     "error": "Topic parameter is required and must be a string"
                 }
             
-            num_papers = arguments.get("num_papers", 5)
+            num_papers = arguments.get("num_papers", 10)
             if not isinstance(num_papers, int) or num_papers < 1:
-                num_papers = 5
+                num_papers = 10
             
             result = get_research_prompt(topic, num_papers)
             return {
