@@ -1468,14 +1468,34 @@ def web_search():
         return render_template('research.html', error="Please provide a research topic.")
     
     try:
+        # First, search for papers and get their IDs
         paper_ids = search_papers(topic, max_results=10)
-        papers_info = get_topic_papers(topic)
-        # get_topic_papers returns a list, not a string
-        if papers_info and isinstance(papers_info, list) and len(papers_info) > 0:
-            papers_data = papers_info
-        else:
-            papers_data = []
+        print(f"Found {len(paper_ids)} paper IDs: {paper_ids}")
         
+        papers_data = []
+        
+        if paper_ids:
+            # Try to get papers from the topic first (in case they're already stored)
+            papers_info = get_topic_papers(topic)
+            if papers_info and isinstance(papers_info, list) and len(papers_info) > 0:
+                papers_data = papers_info
+                print(f"Retrieved {len(papers_data)} papers from stored topic")
+            else:
+                # If no stored papers, fetch details for each paper ID
+                print("No stored papers found, fetching details for each paper ID")
+                for paper_id in paper_ids:
+                    try:
+                        paper_info = extract_info(paper_id)
+                        if paper_info and not paper_info.get('error'):
+                            papers_data.append(paper_info)
+                            print(f"Successfully fetched info for paper {paper_id}")
+                        else:
+                            print(f"Failed to fetch info for paper {paper_id}: {paper_info}")
+                    except Exception as e:
+                        print(f"Error fetching paper {paper_id}: {e}")
+                        continue
+        
+        print(f"Final papers_data count: {len(papers_data)}")
         return render_template('search_results.html', 
                              topic=topic, 
                              papers=papers_data, 
