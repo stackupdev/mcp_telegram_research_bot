@@ -536,8 +536,8 @@ def paper_command(update, context):
         msg = f"Paper Info for {paper_id}:\n"
         msg += f"Title: {info.get('title', 'N/A')}\n"
         msg += f"Authors: {', '.join(info.get('authors', []))}\n"
-        msg += f"Abstract: {info.get('abstract', 'N/A')}\n"
-        msg += f"URL: {info.get('url', 'N/A')}\n"
+        msg += f"Abstract: {info.get('summary', 'N/A')}\n"
+        msg += f"URL: {info.get('pdf_url', 'N/A')}\n"
         send_telegram_message(update, msg)
     except Exception as e:
         send_telegram_message(update, f"Error retrieving paper info: {e}")
