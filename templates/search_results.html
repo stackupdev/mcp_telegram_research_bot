@@ -14,7 +14,7 @@
                 Search Results
             </h1>
             <p class="text-xl text-gray-600">
-                Found {{ paper_count }} papers for "<span class="font-semibold text-blue-600">{{ topic }}</span>"
+                Found {{ paper_count }} papers for "<span class="font-semibold text-blue-600">{{ topic.replace('_', ' ').title() }}</span>"
             </p>
         </div>
         
@@ -231,22 +231,49 @@
 
 <script>
 function copyPaperId(paperId) {
+    // Check if clipboard API is available
+    if (!navigator.clipboard) {
+        // Fallback for older browsers
+        const textArea = document.createElement('textarea');
+        textArea.value = paperId;
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+            document.execCommand('copy');
+            showCopyFeedback(event.target.closest('button'), true);
+        } catch (err) {
+            console.error('Fallback copy failed: ', err);
+            showCopyFeedback(event.target.closest('button'), false);
+        }
+        document.body.removeChild(textArea);
+        return;
+    }
+    
+    // Modern clipboard API
     navigator.clipboard.writeText(paperId).then(function() {
-        // Show success feedback
-        const button = event.target.closest('button');
-        const originalText = button.innerHTML;
-        button.innerHTML = '<i class="fas fa-check"></i> <span>Copied!</span>';
-        button.classList.add('bg-green-500', 'hover:bg-green-600');
-        button.classList.remove('bg-gray-500', 'hover:bg-gray-600');
-        
-        setTimeout(() => {
-            button.innerHTML = originalText;
-            button.classList.remove('bg-green-500', 'hover:bg-green-600');
-            button.classList.add('bg-gray-500', 'hover:bg-gray-600');
-        }, 2000);
+        showCopyFeedback(event.target.closest('button'), true);
     }).catch(function(err) {
         console.error('Could not copy text: ', err);
+        showCopyFeedback(event.target.closest('button'), false);
     });
+}
+
+function showCopyFeedback(button, success) {
+    const originalText = button.innerHTML;
+    const originalClasses = button.className;
+    
+    if (success) {
+        button.innerHTML = '<i class="fas fa-check"></i> <span>Copied!</span>';
+        button.className = 'flex items-center justify-center gap-2 px-4 py-3 bg-green-500 text-white font-semibold rounded-xl hover:bg-green-600 transition-all transform hover:scale-105 shadow-lg';
+    } else {
+        button.innerHTML = '<i class="fas fa-times"></i> <span>Failed</span>';
+        button.className = 'flex items-center justify-center gap-2 px-4 py-3 bg-red-500 text-white font-semibold rounded-xl hover:bg-red-600 transition-all transform hover:scale-105 shadow-lg';
+    }
+    
+    setTimeout(() => {
+        button.innerHTML = originalText;
+        button.className = originalClasses;
+    }, 2000);
 }
 </script>
 {% endblock %}

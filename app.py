@@ -218,16 +218,10 @@ def get_available_folders():
     
     try:
         # Get the folders resource via MCP using async helper
-        print("=== DEBUG: get_available_folders() called ===")
-        print("Attempting to read resource: papers://folders")
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         result = loop.run_until_complete(read_mcp_resource("papers://folders"))
         loop.close()
-        
-        print(f"DEBUG: Raw result from MCP server: {result}")
-        print(f"DEBUG: Result type: {type(result)}")
-        print(f"DEBUG: Result has contents attr: {hasattr(result, 'contents') if result else 'N/A'}")
         
         # Handle MCP ReadResourceResult object
         text_content = None
@@ -236,34 +230,24 @@ def get_available_folders():
             first_content = result.contents[0]
             if hasattr(first_content, 'text'):
                 text_content = first_content.text
-                print(f"Extracted text content: {text_content}")
         elif isinstance(result, str):
             text_content = result
         
         if text_content:
             lines = text_content.split('\n')
             folders = []
-            print(f"Processing {len(lines)} lines from text content")
-            for i, line in enumerate(lines):
-                print(f"Line {i}: '{line.strip()}'")
+            for line in lines:
                 if line.strip().startswith('- '):
                     folder_name = line.strip()[2:]  # Remove '- ' prefix
                     folders.append(folder_name)
-                    print(f"Found folder: {folder_name}")
-            print(f"Total folders found: {len(folders)}")
             return folders
         elif isinstance(result, dict):
-            print(f"Result is dict with keys: {result.keys()}")
-            # Handle if result is a dictionary
             return list(result.keys()) if result else []
         elif isinstance(result, list):
-            print(f"Result is list with {len(result)} items")
             return result
         elif result is None:
-            print("Got None result from MCP resource")
             return []
         else:
-            print(f"Unexpected result type: {type(result)}")
             return []
     except Exception as e:
         print(f"Error calling get_available_folders via MCP: {e}")
@@ -283,15 +267,10 @@ def get_topic_papers(topic: str):
     try:
         # Get the topic papers resource via MCP using async helper
         topic_formatted = topic.lower().replace(" ", "_")
-        print(f"=== DEBUG: get_topic_papers() called for topic: '{topic}' ===")
-        print(f"DEBUG: Formatted topic: '{topic_formatted}'")
-        print(f"DEBUG: Requesting resource: papers://{topic_formatted}")
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         result = loop.run_until_complete(read_mcp_resource(f"papers://{topic_formatted}"))
         loop.close()
-        print(f"DEBUG: Raw result from topic resource: {result}")
-        print(f"DEBUG: Result type: {type(result)}")
         
         # Handle MCP ReadResourceResult object
         text_content = None
@@ -300,18 +279,14 @@ def get_topic_papers(topic: str):
             first_content = result.contents[0]
             if hasattr(first_content, 'text'):
                 text_content = first_content.text
-                print(f"DEBUG: Extracted markdown text content: {text_content[:200]}...")
         elif isinstance(result, str):
             text_content = result
-            print(f"DEBUG: Got string result: {text_content[:200]}...")
         
         if not text_content:
-            print("DEBUG: No text content found in result")
             return []
             
         # Check for no papers message
         if "No papers found" in text_content or "No topics found" in text_content:
-            print("DEBUG: No papers found message detected")
             return []
         
         # Parse the markdown content to extract paper information
@@ -319,16 +294,13 @@ def get_topic_papers(topic: str):
         lines = text_content.split('\n')
         current_paper = {}
         
-        print(f"DEBUG: Parsing {len(lines)} lines of markdown content")
-        
-        for i, line in enumerate(lines):
+        for line in lines:
             line = line.strip()
             
             if line.startswith('## ') and not line.startswith('## Papers on'):
                 # New paper title
                 if current_paper and 'title' in current_paper:
                     papers.append(current_paper)
-                    print(f"DEBUG: Added paper: {current_paper.get('title', 'Unknown')}")
                 current_paper = {'title': line[3:]}
                 
             elif line.startswith('- **Paper ID**:'):
@@ -363,9 +335,7 @@ def get_topic_papers(topic: str):
         # Don't forget the last paper
         if current_paper and 'title' in current_paper:
             papers.append(current_paper)
-            print(f"DEBUG: Added final paper: {current_paper.get('title', 'Unknown')}")
         
-        print(f"DEBUG: Successfully parsed {len(papers)} papers from markdown")
         return papers
     except Exception as e:
         print(f"Error calling get_topic_papers via MCP: {e}")
@@ -1551,27 +1521,16 @@ def web_search():
 @app.route('/topics')
 def web_topics():
     try:
-        print("=== DEBUG: Starting web_topics route ===")
         folders = get_available_folders()
-        print(f"DEBUG: get_available_folders() returned: {folders}")
-        print(f"DEBUG: Number of folders found: {len(folders)}")
-        
         topics_data = {}
         
         for folder in folders:
-            print(f"DEBUG: Processing folder: {folder}")
             topic_name = folder.replace("_", " ").title()
-            print(f"DEBUG: Topic name formatted as: {topic_name}")
             papers_info = get_topic_papers(folder.replace("_", " "))
-            print(f"DEBUG: get_topic_papers returned: {type(papers_info)} with {len(papers_info) if isinstance(papers_info, list) else 'N/A'} items")
             # get_topic_papers returns a list, not a string
             if papers_info and isinstance(papers_info, list) and len(papers_info) > 0:
                 topics_data[topic_name] = len(papers_info)
-                print(f"DEBUG: Added topic {topic_name} with {len(papers_info)} papers")
-            else:
-                print(f"DEBUG: Skipped topic {topic_name} - no papers found")
         
-        print(f"DEBUG: Final topics_data: {topics_data}")
         return render_template('topics.html', topics=topics_data)
     except Exception as e:
         return render_template('topics.html', error=f"Error loading topics: {str(e)}")
