@@ -45,7 +45,7 @@
                 </p>
                 
                 <form action="/search" method="post" class="w-full">
-                    <input type="hidden" name="topic" value="{{ topic_name.lower().replace(' ', '_') }}">
+                    <input type="hidden" name="topic" value="{{ topic_name.lower() }}">
                     <button type="submit" 
                             class="w-full px-4 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:from-blue-600 hover:to-purple-700 transition-all transform group-hover:scale-105 shadow-lg">
                         <i class="fas fa-arrow-right mr-2"></i>
