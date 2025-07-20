@@ -218,14 +218,16 @@ def get_available_folders():
     
     try:
         # Get the folders resource via MCP using async helper
+        print("=== DEBUG: get_available_folders() called ===")
         print("Attempting to read resource: papers://folders")
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         result = loop.run_until_complete(read_mcp_resource("papers://folders"))
         loop.close()
         
-        print(f"Raw result from MCP server: {result}")
-        print(f"Result type: {type(result)}")
+        print(f"DEBUG: Raw result from MCP server: {result}")
+        print(f"DEBUG: Result type: {type(result)}")
+        print(f"DEBUG: Result has contents attr: {hasattr(result, 'contents') if result else 'N/A'}")
         
         # Handle MCP ReadResourceResult object
         text_content = None
@@ -1506,16 +1508,27 @@ def web_search():
 @app.route('/topics')
 def web_topics():
     try:
+        print("=== DEBUG: Starting web_topics route ===")
         folders = get_available_folders()
+        print(f"DEBUG: get_available_folders() returned: {folders}")
+        print(f"DEBUG: Number of folders found: {len(folders)}")
+        
         topics_data = {}
         
         for folder in folders:
+            print(f"DEBUG: Processing folder: {folder}")
             topic_name = folder.replace("_", " ").title()
+            print(f"DEBUG: Topic name formatted as: {topic_name}")
             papers_info = get_topic_papers(folder.replace("_", " "))
+            print(f"DEBUG: get_topic_papers returned: {type(papers_info)} with {len(papers_info) if isinstance(papers_info, list) else 'N/A'} items")
             # get_topic_papers returns a list, not a string
             if papers_info and isinstance(papers_info, list) and len(papers_info) > 0:
                 topics_data[topic_name] = len(papers_info)
+                print(f"DEBUG: Added topic {topic_name} with {len(papers_info)} papers")
+            else:
+                print(f"DEBUG: Skipped topic {topic_name} - no papers found")
         
+        print(f"DEBUG: Final topics_data: {topics_data}")
         return render_template('topics.html', topics=topics_data)
     except Exception as e:
         return render_template('topics.html', error=f"Error loading topics: {str(e)}")
