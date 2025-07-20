@@ -113,7 +113,16 @@ def search_papers(topic: str, max_results: int = 5) -> List[str]:
             print(f"Extracted content: {content}")
             if isinstance(content, list):
                 print(f"Found {len(content)} papers")
-                return content
+                # Extract text from TextContent objects
+                paper_ids = []
+                for item in content:
+                    if hasattr(item, 'text'):
+                        paper_ids.append(item.text)
+                    elif isinstance(item, str):
+                        paper_ids.append(item)
+                    else:
+                        paper_ids.append(str(item))
+                return paper_ids
             elif isinstance(content, str):
                 try:
                     parsed = json.loads(content)
