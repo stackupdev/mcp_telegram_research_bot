@@ -1,6 +1,7 @@
 import os
 import json
 import asyncio
+import re
 from typing import List
 from flask import Flask, render_template, request, jsonify
 from groq import Groq
@@ -912,6 +913,92 @@ def format_deepseek_thinking(text: str) -> str:
     
     return formatted_text
 
+def generate_llm_follow_up_hints(conversation_context: str, last_response: str, tools_used: list = None) -> list:
+    """
+    Generate contextual follow-up question hints using LLM intelligence.
+    Returns a list of AI-generated suggested questions the user might want to ask next.
+    """
+    try:
+        client = Groq()
+        
+        # Build context about what tools were used
+        tools_context = ""
+        if tools_used:
+            tools_context = f"\nTools that were just used: {', '.join(tools_used)}"
+        
+        # Create a prompt for generating follow-up questions
+        hint_prompt = f"""Based on this research conversation response, generate 3-4 intelligent follow-up questions that a curious researcher might want to ask next.
+
+Response that was just given:
+{last_response[:800]}...{tools_context}
+
+Generate 3-4 specific, actionable follow-up questions that would naturally continue this research conversation. Focus on:
+- Deeper exploration of mentioned topics
+- Related research areas
+- Practical applications
+- Comparative analysis
+- Recent developments
+
+Format as a simple list, one question per line, without numbering or bullets. Each question should be engaging and specific to the content discussed."""
+        
+        # Generate hints using LLM
+        completion = client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[
+                {"role": "system", "content": "You are a research assistant that generates intelligent follow-up questions to help users explore topics deeper. Generate specific, actionable questions that would naturally continue the research conversation."},
+                {"role": "user", "content": hint_prompt}
+            ],
+            max_tokens=200,
+            temperature=0.7
+        )
+        
+        response = completion.choices[0].message.content
+        if not response:
+            return []
+        
+        # Parse the response into individual questions
+        questions = []
+        for line in response.strip().split('\n'):
+            line = line.strip()
+            # Clean up any numbering or bullets that might have been added
+            line = re.sub(r'^[\d\-\*\•]\s*', '', line)
+            if line and len(line) > 10:  # Only include substantial questions
+                # Add emoji based on content
+                if any(word in line.lower() for word in ['paper', 'research', 'study']):
+                    line = f"📄 {line}"
+                elif any(word in line.lower() for word in ['compare', 'difference', 'versus']):
+                    line = f"⚖️ {line}"
+                elif any(word in line.lower() for word in ['trend', 'latest', 'recent', 'new']):
+                    line = f"📈 {line}"
+                elif any(word in line.lower() for word in ['application', 'use', 'implement']):
+                    line = f"🔧 {line}"
+                else:
+                    line = f"💡 {line}"
+                questions.append(line)
+        
+        return questions[:4]  # Limit to 4 questions
+        
+    except Exception as e:
+        print(f"Error generating LLM hints: {e}")
+        # Fallback to a few generic but useful questions
+        return [
+            "💡 Can you dive deeper into any specific aspect?",
+            "📈 What are the recent developments in this area?",
+            "🔧 How is this being applied in practice?"
+        ]
+
+def add_follow_up_hints(response: str, tools_used: list = None) -> str:
+    """
+    Helper function to add LLM-generated follow-up hints to a response.
+    """
+    hints = generate_llm_follow_up_hints("", response, tools_used)
+    
+    if hints:
+        hints_text = "\n\n💡 **What to explore next:**\n" + "\n".join([f"• {hint}" for hint in hints])
+        return response + hints_text
+    
+    return response
+
 def get_deepseek_reply(messages: list, enable_tools: bool = True, update=None) -> str:
     """
     Enhanced Deepseek reply function with function calling support.
@@ -1174,7 +1261,8 @@ def help_command(update, context):
         "/search <topic> - Search ArXiv papers directly\n" +
         "/papers <topic> - View papers for specific topic\n" +
         "/paper <id> - Get detailed paper information\n" +
-        "/topics - List all available research topics\n\n" +
+        "/topics - List all available research topics\n" +
+        "/prompt <topic> - Generate comprehensive research prompt\n\n" +
         "🔧 Utility Commands:\n" +
         "/reset - Clear conversation history\n" +
         "/help - Show this help message\n\n" +
@@ -1404,6 +1492,25 @@ def deepseek_command(update, context):
         
     send_telegram_message(update, reply)
 
+def prompt_command(update, context):
+    """Generate a comprehensive research prompt for a topic"""
+    if not context.args:
+        send_telegram_message(update, "📝 Please provide a research topic.\n\nUsage: /prompt <topic>\nExample: /prompt quantum computing")
+        return
+    
+    topic = " ".join(context.args)
+    
+    try:
+        # Generate research prompt
+        prompt = get_research_prompt(topic, 10)
+        
+        response = f"📝 **Research Prompt for '{topic}'**\n\n{prompt}"
+        send_telegram_message(update, response)
+        
+    except Exception as e:
+        print(f"Error in prompt command: {e}")
+        send_telegram_message(update, "❌ Sorry, there was an error generating the research prompt. Please try again.")
+
 def reset_command(update, context):
     user_id = update.effective_user.id
     udata = get_user_data(user_id)
@@ -1468,6 +1575,7 @@ if telegram_dispatcher:
     telegram_dispatcher.add_handler(CommandHandler("papers", papers_command))
     telegram_dispatcher.add_handler(CommandHandler("paper", paper_command))
     telegram_dispatcher.add_handler(CommandHandler("topics", topics_command))
+    telegram_dispatcher.add_handler(CommandHandler("prompt", prompt_command))
     telegram_dispatcher.add_handler(CommandHandler("llama", llama_command))
     telegram_dispatcher.add_handler(CommandHandler("deepseek", deepseek_command))
     telegram_dispatcher.add_handler(CommandHandler("reset", reset_command))
