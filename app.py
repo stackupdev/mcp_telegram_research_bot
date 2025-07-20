@@ -566,8 +566,13 @@ def telegram_webhook():
 def index():
     return render_template('index.html')
 
-@app.route('/main')
+@app.route('/main', methods=['GET', 'POST'])
 def main():
+    if request.method == 'POST':
+        # Handle the POST request (form submission from index.html)
+        name = request.form.get('q', 'Guest')
+        return render_template('main.html', name=name)
+    # Handle GET request
     return render_template('main.html')
 
 @app.route('/research')
