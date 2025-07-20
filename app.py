@@ -1526,6 +1526,14 @@ def get_deepseek_reply(messages: list, enable_tools: bool = True, update=None) -
                 # Execute the function
                 function_result = execute_function_call(function_name, arguments)
                 
+                # Handle case where function_result is None
+                if function_result is None:
+                    function_result = {
+                        "success": False,
+                        "function": function_name,
+                        "error": "Function call returned None"
+                    }
+                
                 # Send completion status
                 if update:
                     if function_result.get('success'):
