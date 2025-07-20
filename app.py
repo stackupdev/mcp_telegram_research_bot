@@ -634,12 +634,20 @@ def message_handler(update, context):
         context.args = ["Hi,", "I'd", "like", "to", "chat"]
         return deepseek_command(update, context)
     elif text == "Search Papers":
+        # Set user state to expect search input
+        udata['awaiting_search'] = True
         send_telegram_message(update, "Please enter a research topic to search for.\nExample: machine learning, quantum computing, neural networks")
         return
     elif text == "View Papers by Topic":
         return topics_command(update, context)
     elif text == "List Topics":
         return topics_command(update, context)
+    
+    # Check if user is awaiting search input
+    if udata.get('awaiting_search', False):
+        udata['awaiting_search'] = False  # Clear the state
+        context.args = [text]  # Set the search topic
+        return search_command(update, context)
     
     # Default: treat as a question for the last used model or LLAMA
     model = udata.get('last_model', 'llama')
