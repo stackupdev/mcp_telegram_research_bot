@@ -995,11 +995,21 @@ def send_interactive_hints(update, response: str, tools_used: list = None):
     hints = generate_llm_follow_up_hints("", response, tools_used)
     
     if hints:
-        # Create inline keyboard with hint buttons
+        # Create inline keyboard with concise category buttons
         keyboard = []
         for i, hint in enumerate(hints):
-            # Create button text (first few words + emoji)
-            button_text = hint[:50] + "..." if len(hint) > 50 else hint
+            # Create concise category-based button text
+            if hint.startswith('📄'):
+                button_text = "📄 Research Details"
+            elif hint.startswith('⚖️'):
+                button_text = "⚖️ Compare & Contrast"
+            elif hint.startswith('📈'):
+                button_text = "📈 Latest Trends"
+            elif hint.startswith('🔧'):
+                button_text = "🔧 Practical Applications"
+            else:
+                button_text = "💡 Deep Dive"
+            
             callback_data = f"hint_{i}_{update.effective_user.id}"
             keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
         
@@ -1020,6 +1030,7 @@ def send_interactive_hints(update, response: str, tools_used: list = None):
 def handle_hint_callback(update, context):
     """
     Handle callback when user clicks on a hint button.
+    Sends the question and triggers a bot response.
     """
     query = update.callback_query
     query.answer()  # Acknowledge the callback
@@ -1039,8 +1050,30 @@ def handle_hint_callback(update, context):
             if hint_index < len(hints):
                 hint_question = hints[hint_index]
                 
-                # Send the full hint question as a new message
-                query.message.reply_text(hint_question)
+                # Remove emoji prefix from the question for cleaner display
+                clean_question = hint_question.split(' ', 1)[1] if ' ' in hint_question else hint_question
+                
+                # Send the question as if the user asked it
+                query.message.reply_text(f"💬 {clean_question}")
+                
+                # Create a fake context with the question as args
+                fake_context = type('Context', (), {})()
+                fake_context.args = clean_question.split()
+                
+                # Create a new update object for the question
+                fake_update = type('Update', (), {})()
+                fake_update.effective_user = query.from_user
+                fake_update.message = query.message
+                
+                # Determine which model was last used and respond with the same model
+                last_model = udata.get('last_model', 'llama')
+                
+                if last_model == 'deepseek':
+                    # Process as deepseek command
+                    deepseek_command(fake_update, fake_context)
+                else:
+                    # Process as llama command (default)
+                    llama_command(fake_update, fake_context)
 
 def get_deepseek_reply(messages: list, enable_tools: bool = True, update=None) -> str:
     """
