@@ -1225,13 +1225,18 @@ def llama_command(update, context):
     # Check if auto-research is enabled for this user
     auto_research_enabled = udata.get('auto_research', True)
     
-    # Add system message based on research mode (only if not already present)
-    if not udata['llama_history'] or udata['llama_history'][0].get('role') != 'system':
-        if auto_research_enabled:
-            system_content = "You are a helpful research assistant with access to ArXiv academic papers. When users ask about research topics, recent papers, or want to find academic information, automatically use the available tools to search for and retrieve relevant papers. Integrate the research results naturally into your responses. Be conversational and helpful."
-        else:
-            system_content = "You are a helpful, friendly AI assistant. Engage in natural conversation and provide helpful responses on a wide variety of topics. Be conversational, informative, and engaging. Do not mention research papers, academic sources, or offer to search for papers."
-        
+    # Determine the appropriate system message based on research mode
+    if auto_research_enabled:
+        system_content = "You are a helpful research assistant with access to ArXiv academic papers. When users ask about research topics, recent papers, or want to find academic information, automatically use the available tools to search for and retrieve relevant papers. Integrate the research results naturally into your responses. Be conversational and helpful."
+    else:
+        system_content = "You are a helpful, friendly AI assistant. Engage in natural conversation and provide helpful responses on a wide variety of topics. Be conversational, informative, and engaging. Do not mention research papers, academic sources, or offer to search for papers."
+    
+    # Update or add system message based on current research mode
+    if udata['llama_history'] and udata['llama_history'][0].get('role') == 'system':
+        # Update existing system message if research mode context has changed
+        udata['llama_history'][0]['content'] = system_content
+    else:
+        # Add new system message if none exists
         system_message = {
             "role": "system",
             "content": system_content
@@ -1284,13 +1289,18 @@ def deepseek_command(update, context):
     # Check if auto-research is enabled for this user
     auto_research_enabled = udata.get('auto_research', True)
     
-    # Add system message based on research mode (only if not already present)
-    if not udata['deepseek_history'] or udata['deepseek_history'][0].get('role') != 'system':
-        if auto_research_enabled:
-            system_content = "You are a helpful research assistant with access to ArXiv academic papers. When users ask about research topics, recent papers, or want to find academic information, automatically use the available tools to search for and retrieve relevant papers. Integrate the research results naturally into your responses. Be conversational and helpful."
-        else:
-            system_content = "You are a helpful, friendly AI assistant. Engage in natural conversation and provide helpful responses on a wide variety of topics. Be conversational, informative, and engaging. Do not mention research papers, academic sources, or offer to search for papers."
-        
+    # Determine the appropriate system message based on research mode
+    if auto_research_enabled:
+        system_content = "You are a helpful research assistant with access to ArXiv academic papers. When users ask about research topics, recent papers, or want to find academic information, automatically use the available tools to search for and retrieve relevant papers. Integrate the research results naturally into your responses. Be conversational and helpful."
+    else:
+        system_content = "You are a helpful, friendly AI assistant. Engage in natural conversation and provide helpful responses on a wide variety of topics. Be conversational, informative, and engaging. Do not mention research papers, academic sources, or offer to search for papers."
+    
+    # Update or add system message based on current research mode
+    if udata['deepseek_history'] and udata['deepseek_history'][0].get('role') == 'system':
+        # Update existing system message if research mode context has changed
+        udata['deepseek_history'][0]['content'] = system_content
+    else:
+        # Add new system message if none exists
         system_message = {
             "role": "system",
             "content": system_content
