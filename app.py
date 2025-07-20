@@ -1,5 +1,6 @@
 import os
 import json
+import asyncio
 from typing import List
 from flask import Flask, render_template, request, jsonify
 from groq import Groq
@@ -26,21 +27,53 @@ MAX_TOKENS = 4000
 
 RESEARCH_SERVER_URL = "https://mcp-arxiv-server.onrender.com/sse"
 
-# Initialize MCP client for SSE connection
-mcp_client = None
+# MCP client will be created as needed
+mcp_client_factory = None
 
 def init_mcp_client():
-    """Initialize the MCP client connection"""
-    global mcp_client
+    """Initialize the MCP client factory"""
+    global mcp_client_factory
     try:
-        mcp_client = sse_client(RESEARCH_SERVER_URL)
-        print(f"MCP client initialized successfully for {RESEARCH_SERVER_URL}")
+        mcp_client_factory = lambda: sse_client(RESEARCH_SERVER_URL)
+        print(f"MCP client factory initialized successfully for {RESEARCH_SERVER_URL}")
     except Exception as e:
-        print(f"Failed to initialize MCP client: {e}")
-        mcp_client = None
+        print(f"Failed to initialize MCP client factory: {e}")
+        mcp_client_factory = None
 
-# Initialize MCP client at startup
+# Initialize MCP client factory at startup
 init_mcp_client()
+
+async def call_mcp_tool(tool_name: str, **kwargs):
+    """Call an MCP tool with proper async handling"""
+    if not mcp_client_factory:
+        print("MCP client factory not initialized")
+        return None
+    
+    try:
+        async with mcp_client_factory() as client:
+            result = await client.call_tool(tool_name, **kwargs)
+            return result
+    except Exception as e:
+        print(f"Error calling MCP tool {tool_name}: {e}")
+        import traceback
+        print(f"Full traceback: {traceback.format_exc()}")
+        return None
+
+async def read_mcp_resource(uri: str):
+    """Read an MCP resource with proper async handling"""
+    if not mcp_client_factory:
+        print("MCP client factory not initialized")
+        return None
+    
+    try:
+        async with mcp_client_factory() as client:
+            result = await client.read_resource(uri)
+            return result
+    except Exception as e:
+        print(f"Error reading MCP resource {uri}: {e}")
+        import traceback
+        print(f"Full traceback: {traceback.format_exc()}")
+        return None
 
 # ============================================================================
 # RESEARCH FUNCTIONALITY (via remote MCP server with SSE)
@@ -51,14 +84,18 @@ def search_papers(topic: str, max_results: int = 5) -> List[str]:
     Call the remote MCP server to search for papers on a topic.
     Returns: List of paper IDs
     """
-    if not mcp_client:
-        print("MCP client not initialized")
+    if not mcp_client_factory:
+        print("MCP client factory not initialized")
         return []
     
     try:
-        # Call the search_papers tool via MCP
+        # Call the search_papers tool via MCP using async helper
         print(f"Calling search_papers tool with topic='{topic}', max_results={max_results}")
-        result = mcp_client.call_tool("search_papers", topic=topic, max_results=max_results)
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        result = loop.run_until_complete(call_mcp_tool("search_papers", topic=topic, max_results=max_results))
+        loop.close()
+        
         print(f"Search result: {result}")
         print(f"Search result type: {type(result)}")
         
@@ -69,13 +106,15 @@ def search_papers(topic: str, max_results: int = 5) -> List[str]:
             print(f"Got string result: {result}")
             # Try to parse if it's a JSON string
             try:
-                import json
                 parsed = json.loads(result)
                 if isinstance(parsed, list):
                     return parsed
             except:
                 pass
             return [result] if result else []
+        elif result is None:
+            print("Got None result from MCP tool")
+            return []
         else:
             print(f"Unexpected result type: {type(result)}")
             return []
@@ -90,13 +129,17 @@ def extract_info(paper_id: str):
     Call the remote MCP server to get info about a specific paper.
     Returns: Paper info as dict or error message
     """
-    if not mcp_client:
-        print("MCP client not initialized")
+    if not mcp_client_factory:
+        print("MCP client factory not initialized")
         return {"error": "MCP client not available"}
     
     try:
-        # Call the extract_info tool via MCP
-        result = mcp_client.call_tool("extract_info", paper_id=paper_id)
+        # Call the extract_info tool via MCP using async helper
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        result = loop.run_until_complete(call_mcp_tool("extract_info", paper_id=paper_id))
+        loop.close()
+        
         if isinstance(result, str) and result.startswith("There's no saved information"):
             return {"error": result}
         # If result is a JSON string, parse it
@@ -105,6 +148,8 @@ def extract_info(paper_id: str):
                 return json.loads(result)
             except json.JSONDecodeError:
                 return {"error": result}
+        elif result is None:
+            return {"error": "No result from MCP tool"}
         return result
     except Exception as e:
         print(f"Error calling extract_info via MCP: {e}")
@@ -115,14 +160,18 @@ def get_available_folders():
     Call the remote MCP server to list all available topic folders.
     Returns: List of topic folder names
     """
-    if not mcp_client:
-        print("MCP client not initialized")
+    if not mcp_client_factory:
+        print("MCP client factory not initialized")
         return []
     
     try:
-        # Get the folders resource via MCP
+        # Get the folders resource via MCP using async helper
         print("Attempting to read resource: papers://folders")
-        result = mcp_client.read_resource("papers://folders")
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        result = loop.run_until_complete(read_mcp_resource("papers://folders"))
+        loop.close()
+        
         print(f"Raw result from MCP server: {result}")
         print(f"Result type: {type(result)}")
         
@@ -146,6 +195,9 @@ def get_available_folders():
         elif isinstance(result, list):
             print(f"Result is list with {len(result)} items")
             return result
+        elif result is None:
+            print("Got None result from MCP resource")
+            return []
         else:
             print(f"Unexpected result type: {type(result)}")
             return []
@@ -160,14 +212,17 @@ def get_topic_papers(topic: str):
     Call the remote MCP server to get all papers for a topic.
     Returns: List of paper dictionaries
     """
-    if not mcp_client:
-        print("MCP client not initialized")
+    if not mcp_client_factory:
+        print("MCP client factory not initialized")
         return []
     
     try:
-        # Get the topic papers resource via MCP
+        # Get the topic papers resource via MCP using async helper
         topic_formatted = topic.lower().replace(" ", "_")
-        result = mcp_client.read_resource(f"papers://{topic_formatted}")
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        result = loop.run_until_complete(read_mcp_resource(f"papers://{topic_formatted}"))
+        loop.close()
         
         # Parse the markdown content to extract paper information
         if isinstance(result, str):
