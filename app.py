@@ -630,9 +630,10 @@ def execute_function_call(function_name: str, arguments: dict):
 # LLM FUNCTIONALITY (Groq API) - Enhanced with Function Calling
 # ============================================================================
 
-def get_llama_reply(messages: list, enable_tools: bool = True) -> str:
+def get_llama_reply(messages: list, enable_tools: bool = True, update=None) -> str:
     """
     Enhanced LLama reply function with function calling support.
+    Animation is triggered when tools are actually called.
     """
     try:
         client = Groq()
@@ -654,6 +655,12 @@ def get_llama_reply(messages: list, enable_tools: bool = True) -> str:
         # Check if the model wants to call functions
         if message.tool_calls:
             print(f"LLama wants to call {len(message.tool_calls)} function(s)")
+            
+            # Start animation since we know tools will be called
+            animation_started = False
+            if update:
+                send_animated_search_message(update)
+                animation_started = True
             
             # Add the assistant's message with tool calls to conversation
             messages.append({
@@ -692,6 +699,10 @@ def get_llama_reply(messages: list, enable_tools: bool = True) -> str:
                 model="llama-3.1-8b-instant",
                 messages=messages
             )
+            
+            # Stop animation now that tools have completed
+            if animation_started and update:
+                stop_animated_search_message(update.effective_chat.id)
             
             final_response = final_completion.choices[0].message.content
             
@@ -843,9 +854,10 @@ def format_deepseek_thinking(text: str) -> str:
     
     return formatted_text
 
-def get_deepseek_reply(messages: list, enable_tools: bool = True) -> str:
+def get_deepseek_reply(messages: list, enable_tools: bool = True, update=None) -> str:
     """
     Enhanced Deepseek reply function with function calling support.
+    Animation is triggered when tools are actually called.
     """
     try:
         client = Groq()
@@ -867,6 +879,12 @@ def get_deepseek_reply(messages: list, enable_tools: bool = True) -> str:
         # Check if the model wants to call functions
         if message.tool_calls:
             print(f"Deepseek wants to call {len(message.tool_calls)} function(s)")
+            
+            # Start animation since we know tools will be called
+            animation_started = False
+            if update:
+                send_animated_search_message(update)
+                animation_started = True
             
             # Add the assistant's message with tool calls to conversation
             messages.append({
@@ -905,6 +923,10 @@ def get_deepseek_reply(messages: list, enable_tools: bool = True) -> str:
                 model="deepseek-r1-distill-llama-70b",
                 messages=messages
             )
+            
+            # Stop animation now that tools have completed
+            if animation_started and update:
+                stop_animated_search_message(update.effective_chat.id)
             
             final_response = final_completion.choices[0].message.content
             
@@ -1258,17 +1280,9 @@ def llama_command(update, context):
         }
         udata['llama_history'].insert(0, system_message)
     
-    # Send animated search indicator for research queries (only if auto-research is enabled)
-    search_thread = None
-    if auto_research_enabled and any(keyword in q.lower() for keyword in ['paper', 'research', 'study', 'recent', 'latest', 'find', 'search', 'academic']):
-        search_thread = send_animated_search_message(update)
-    
     # Get reply from LLAMA with function calling enabled/disabled based on user setting
-    reply = get_llama_reply(udata['llama_history'], enable_tools=auto_research_enabled)
-    
-    # Stop the search animation if it was started
-    if search_thread:
-        stop_search_animation(update)
+    # Animation will be handled inside get_llama_reply when tools are actually called
+    reply = get_llama_reply(udata['llama_history'], enable_tools=auto_research_enabled, update=update)
     
     # Only add assistant message to history if it's not an error
     if not reply.startswith("⚠️"):
@@ -1322,17 +1336,9 @@ def deepseek_command(update, context):
         }
         udata['deepseek_history'].insert(0, system_message)
     
-    # Send animated search indicator for research queries (only if auto-research is enabled)
-    search_thread = None
-    if auto_research_enabled and any(keyword in q.lower() for keyword in ['paper', 'research', 'study', 'recent', 'latest', 'find', 'search', 'academic']):
-        search_thread = send_animated_search_message(update)
-    
     # Get reply from Deepseek with function calling enabled/disabled based on user setting
-    reply = get_deepseek_reply(udata['deepseek_history'], enable_tools=auto_research_enabled)
-    
-    # Stop the search animation if it was started
-    if search_thread:
-        stop_search_animation(update)
+    # Animation will be handled inside get_deepseek_reply when tools are actually called
+    reply = get_deepseek_reply(udata['deepseek_history'], enable_tools=auto_research_enabled, update=update)
     
     # Only add assistant message to history if it's not an error
     if not reply.startswith("⚠️"):

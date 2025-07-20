@@ -95,9 +95,26 @@
                         {% if paper.summary %}
                         <div class="mb-6">
                             <h3 class="text-sm font-semibold text-gray-700 mb-2">Abstract:</h3>
+                            {% if paper.summary|length > 500 %}
+                            <div class="abstract-container">
+                                <p class="text-gray-600 leading-relaxed abstract-short">
+                                    {{ paper.summary[:500] }}...
+                                    <button onclick="toggleAbstract(this)" class="text-blue-600 hover:text-blue-800 font-medium ml-2">
+                                        Show more
+                                    </button>
+                                </p>
+                                <p class="text-gray-600 leading-relaxed abstract-full" style="display: none;">
+                                    {{ paper.summary }}
+                                    <button onclick="toggleAbstract(this)" class="text-blue-600 hover:text-blue-800 font-medium ml-2">
+                                        Show less
+                                    </button>
+                                </p>
+                            </div>
+                            {% else %}
                             <p class="text-gray-600 leading-relaxed">
-                                {{ paper.summary[:500] }}{% if paper.summary|length > 500 %}...{% endif %}
+                                {{ paper.summary }}
                             </p>
+                            {% endif %}
                         </div>
                         {% endif %}
                     </div>
@@ -119,7 +136,7 @@
                         </a>
                         {% endif %}
                         
-                        <button onclick="copyPaperId('{{ paper.id }}')" 
+                        <button onclick="copyPaperId('{{ paper.id }}', this)" 
                                 class="flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-gray-500 to-gray-600 text-white font-semibold rounded-xl hover:from-gray-600 hover:to-gray-700 transition-all transform hover:scale-105 shadow-lg">
                             <i class="fas fa-copy"></i>
                             <span>Copy ID</span>
@@ -230,20 +247,27 @@
 </section>
 
 <script>
-function copyPaperId(paperId) {
+function copyPaperId(paperId, buttonElement) {
+    // Use the passed button element or find it from the event
+    const button = buttonElement || event.target.closest('button');
+    
     // Check if clipboard API is available
     if (!navigator.clipboard) {
         // Fallback for older browsers
         const textArea = document.createElement('textarea');
         textArea.value = paperId;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        textArea.style.top = '-999999px';
         document.body.appendChild(textArea);
+        textArea.focus();
         textArea.select();
         try {
-            document.execCommand('copy');
-            showCopyFeedback(event.target.closest('button'), true);
+            const successful = document.execCommand('copy');
+            showCopyFeedback(button, successful);
         } catch (err) {
             console.error('Fallback copy failed: ', err);
-            showCopyFeedback(event.target.closest('button'), false);
+            showCopyFeedback(button, false);
         }
         document.body.removeChild(textArea);
         return;
@@ -251,14 +275,16 @@ function copyPaperId(paperId) {
     
     // Modern clipboard API
     navigator.clipboard.writeText(paperId).then(function() {
-        showCopyFeedback(event.target.closest('button'), true);
+        showCopyFeedback(button, true);
     }).catch(function(err) {
         console.error('Could not copy text: ', err);
-        showCopyFeedback(event.target.closest('button'), false);
+        showCopyFeedback(button, false);
     });
 }
 
 function showCopyFeedback(button, success) {
+    if (!button) return;
+    
     const originalText = button.innerHTML;
     const originalClasses = button.className;
     
@@ -274,6 +300,22 @@ function showCopyFeedback(button, success) {
         button.innerHTML = originalText;
         button.className = originalClasses;
     }, 2000);
+}
+
+function toggleAbstract(button) {
+    const container = button.closest('.abstract-container');
+    const shortVersion = container.querySelector('.abstract-short');
+    const fullVersion = container.querySelector('.abstract-full');
+    
+    if (shortVersion.style.display === 'none') {
+        // Currently showing full, switch to short
+        shortVersion.style.display = 'block';
+        fullVersion.style.display = 'none';
+    } else {
+        // Currently showing short, switch to full
+        shortVersion.style.display = 'none';
+        fullVersion.style.display = 'block';
+    }
 }
 </script>
 {% endblock %}
