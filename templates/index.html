@@ -26,7 +26,7 @@
                 Your AI-powered research companion that seamlessly integrates with ArXiv to provide intelligent academic paper search, analysis, and conversational insights.
             </p>
             
-            <div class="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12">
+            <div class="flex flex-col sm:flex-row gap-4 justify-center items-center mb-8">
                 <form action="/main" method="post" class="w-full sm:w-auto">
                     <div class="flex flex-col sm:flex-row gap-3 max-w-md mx-auto">
                         <input type="text" name="q" placeholder="Enter your name to get started" 
@@ -37,6 +37,24 @@
                         </button>
                     </div>
                 </form>
+            </div>
+            
+            <!-- Telegram Bot CTA -->
+            <div class="mb-12">
+                <div class="bg-gradient-to-r from-cyan-500 to-blue-600 rounded-2xl p-6 max-w-lg mx-auto shadow-xl animate-pulse-glow">
+                    <div class="text-center">
+                        <div class="flex items-center justify-center mb-3">
+                            <i class="fab fa-telegram text-white text-3xl mr-3"></i>
+                            <span class="text-white font-bold text-xl">Try on Telegram!</span>
+                        </div>
+                        <p class="text-cyan-100 mb-4 text-sm">Access all features instantly on your phone</p>
+                        <a href="https://t.me/InquisitaSparkBot" target="_blank" 
+                           class="inline-flex items-center px-6 py-3 bg-white text-cyan-600 font-bold rounded-xl hover:bg-gray-50 transition-all transform hover:scale-105 shadow-lg">
+                            <i class="fab fa-telegram mr-2 text-xl"></i>
+                            Open Telegram Bot
+                        </a>
+                    </div>
+                </div>
             </div>
             
             <div class="flex flex-wrap justify-center gap-4 text-sm text-gray-500">
@@ -199,8 +217,12 @@
             Join thousands of researchers, students, and professionals who use Inquisita Spark for intelligent academic research.
         </p>
         <div class="flex flex-col sm:flex-row gap-4 justify-center">
-            <a href="/research" class="px-8 py-4 bg-white text-blue-600 font-semibold rounded-xl hover:bg-gray-50 transition-all transform hover:scale-105 shadow-lg">
-                Start Researching
+            <a href="https://t.me/InquisitaSparkBot" target="_blank" class="px-8 py-4 bg-white text-blue-600 font-semibold rounded-xl hover:bg-gray-50 transition-all transform hover:scale-105 shadow-lg">
+                <i class="fab fa-telegram mr-2"></i>
+                Try Telegram Bot
+            </a>
+            <a href="/research" class="px-8 py-4 bg-transparent border-2 border-white text-white font-semibold rounded-xl hover:bg-white hover:text-blue-600 transition-all transform hover:scale-105">
+                Start Web Research
             </a>
             <a href="/llama" class="px-8 py-4 bg-transparent border-2 border-white text-white font-semibold rounded-xl hover:bg-white hover:text-blue-600 transition-all transform hover:scale-105">
                 Try AI Chat

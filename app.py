@@ -1488,9 +1488,9 @@ def web_topics():
         for folder in folders:
             topic_name = folder.replace("_", " ").title()
             papers_info = get_topic_papers(folder.replace("_", " "))
-            if not papers_info.startswith("No papers"):
-                papers_data = json.loads(papers_info)
-                topics_data[topic_name] = len(papers_data)
+            # get_topic_papers returns a list, not a string
+            if papers_info and isinstance(papers_info, list) and len(papers_info) > 0:
+                topics_data[topic_name] = len(papers_info)
         
         return render_template('topics.html', topics=topics_data)
     except Exception as e:
