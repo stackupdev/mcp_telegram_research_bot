@@ -1004,6 +1004,10 @@ def send_interactive_hints(update, response: str, tools_used: list = None):
             callback_data = f"hint_{i}_{update.effective_user.id}"
             keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
         
+        # Always add an "arXiv Papers" button for direct paper search
+        arxiv_callback = f"arxiv_search_{update.effective_user.id}"
+        keyboard.append([InlineKeyboardButton("📄 arXiv Papers", callback_data=arxiv_callback)])
+        
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         # Send message with interactive hint buttons
@@ -1179,7 +1183,14 @@ def handle_hint_callback(update, context):
     # Parse callback data: hint_{index}_{user_id} or onboard_{index}_{user_id}
     callback_data = query.data
     
-    if callback_data.startswith('hint_') or callback_data.startswith('onboard_'):
+    if callback_data.startswith('arxiv_search_'):
+        # Handle arXiv Papers button click
+        user_id = int(callback_data.split('_')[2])
+        
+        # Send a prompt asking what to search for
+        query.message.reply_text("📄 What research topic would you like to search for on arXiv?\n\nJust type your topic and I'll find the latest papers for you!")
+        
+    elif callback_data.startswith('hint_') or callback_data.startswith('onboard_'):
         parts = callback_data.split('_')
         if len(parts) >= 3:
             hint_index = int(parts[1])
