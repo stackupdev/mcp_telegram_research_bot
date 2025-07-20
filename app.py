@@ -7,6 +7,7 @@ from groq import Groq
 from telegram import Update, Bot, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Dispatcher, CommandHandler, MessageHandler, Filters
 from mcp.client.sse import sse_client
+from mcp.client.session import ClientSession
 
 # Flask app initialization
 app = Flask(__name__)
@@ -50,9 +51,12 @@ async def call_mcp_tool(tool_name: str, **kwargs):
         return None
     
     try:
-        async with mcp_client_factory() as client:
-            result = await client.call_tool(tool_name, **kwargs)
-            return result
+        async with mcp_client_factory() as streams:
+            read_stream, write_stream = streams
+            async with ClientSession(read_stream, write_stream) as session:
+                await session.initialize()
+                result = await session.call_tool(tool_name, **kwargs)
+                return result
     except Exception as e:
         print(f"Error calling MCP tool {tool_name}: {e}")
         import traceback
@@ -66,9 +70,12 @@ async def read_mcp_resource(uri: str):
         return None
     
     try:
-        async with mcp_client_factory() as client:
-            result = await client.read_resource(uri)
-            return result
+        async with mcp_client_factory() as streams:
+            read_stream, write_stream = streams
+            async with ClientSession(read_stream, write_stream) as session:
+                await session.initialize()
+                result = await session.read_resource(uri)
+                return result
     except Exception as e:
         print(f"Error reading MCP resource {uri}: {e}")
         import traceback
