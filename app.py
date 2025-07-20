@@ -811,10 +811,9 @@ def start(update, context):
     user_id = update.effective_user.id
     user_name = update.effective_user.first_name or "there"
     
-    # Create custom keyboard with LLM chat and MCP tools toggle
+    # Create simplified keyboard with just chat options
     keyboard = [
-        [KeyboardButton("Chat with LLAMA"), KeyboardButton("Chat with Deepseek")],
-        [KeyboardButton("MCP Tools")]
+        [KeyboardButton("Chat with LLAMA"), KeyboardButton("Chat with Deepseek")]
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     
@@ -1033,26 +1032,7 @@ def message_handler(update, context):
     udata = get_user_data(user_id)
     text = update.message.text
     
-    # Toggle MCP Tools keyboard
-    if text == "MCP Tools":
-        mcp_keyboard = [
-            [KeyboardButton("Search Papers")],
-            [KeyboardButton("View Papers by Topic")],
-            [KeyboardButton("List Topics")],
-            [KeyboardButton("Back to Main Menu")]
-        ]
-        reply_markup = ReplyKeyboardMarkup(mcp_keyboard, resize_keyboard=True)
-        send_telegram_message(update, "MCP Tools: Select a research action.", reply_markup=reply_markup)
-        return
-    elif text == "Back to Main Menu":
-        # Show main keyboard again
-        main_keyboard = [
-            [KeyboardButton("Chat with LLAMA"), KeyboardButton("Chat with Deepseek")],
-            [KeyboardButton("MCP Tools")]
-        ]
-        reply_markup = ReplyKeyboardMarkup(main_keyboard, resize_keyboard=True)
-        send_telegram_message(update, "Main menu:", reply_markup=reply_markup)
-        return
+    # Removed MCP Tools keyboard - now using intelligent chat with automatic research
     
     # Handle keyboard button presses
     if text == "Chat with LLAMA":
@@ -1061,35 +1041,7 @@ def message_handler(update, context):
     elif text == "Chat with Deepseek":
         context.args = ["Hi,", "I'd", "like", "to", "chat"]
         return deepseek_command(update, context)
-    elif text == "Search Papers":
-        # Set user state to expect search input
-        udata['awaiting_search'] = True
-        send_telegram_message(update, "Please enter a research topic to search for.\nExample: machine learning, quantum computing, neural networks")
-        return
-    elif text == "View Papers by Topic":
-        # Set user state to expect topic input for viewing papers
-        udata['awaiting_topic_selection'] = True
-        topics = get_available_folders()
-        if not topics:
-            send_telegram_message(update, "No topics available. Search for papers first to create topics.")
-            return
-        topic_list = "\n".join([f"• {topic}" for topic in topics])
-        send_telegram_message(update, f"Available topics:\n{topic_list}\n\nPlease enter the topic name to view papers:")
-        return
-    elif text == "List Topics":
-        return topics_command(update, context)
-    
-    # Check if user is awaiting search input
-    if udata.get('awaiting_search', False):
-        udata['awaiting_search'] = False  # Clear the state
-        context.args = [text]  # Set the search topic
-        return search_command(update, context)
-    
-    # Check if user is awaiting topic selection for viewing papers
-    if udata.get('awaiting_topic_selection', False):
-        udata['awaiting_topic_selection'] = False  # Clear the state
-        context.args = [text]  # Set the topic name
-        return papers_command(update, context)
+    # Removed MCP Tools menu buttons - users can now use natural language or direct commands
     
     # Default: treat as a question for the last used model or LLAMA
     model = udata.get('last_model', 'llama')
