@@ -10,6 +10,28 @@ from telegram.ext import Dispatcher, CommandHandler, MessageHandler, CallbackQue
 from mcp.client.sse import sse_client
 from mcp.client.session import ClientSession
 
+# Import tool integration helpers
+try:
+    from tool_integration_helpers import (
+        get_tool_flow_suggestions,
+        generate_tool_aware_fallback_questions,
+        predict_next_tool_from_question,
+        enhance_question_with_tool_context
+    )
+except ImportError:
+    # Fallback functions if helper file is not available
+    def get_tool_flow_suggestions(tools_used, response_content):
+        return {'immediate_next_steps': [], 'exploration_paths': [], 'deep_dive_options': []}
+    
+    def generate_tool_aware_fallback_questions(tools_used):
+        return ["💡 What would you like to explore next?", "🔍 Search for more information?", "📚 Explore related topics?"]
+    
+    def predict_next_tool_from_question(question):
+        return 'search_papers'
+    
+    def enhance_question_with_tool_context(question, predicted_tool):
+        return question
+
 # Flask app initialization
 app = Flask(__name__)
 
@@ -960,31 +982,85 @@ def format_deepseek_thinking(text: str) -> str:
 
 def generate_llm_follow_up_hints(conversation_context: str, last_response: str, tools_used: list = None) -> list:
     """
-    Generate contextual follow-up question hints using LLM intelligence.
-    Returns a list of AI-generated suggested questions the user might want to ask next.
+    Generate tool-aware contextual follow-up question hints using LLM intelligence.
+    Returns a list of AI-generated suggested questions optimized for MCP tool integration.
     """
     try:
         client = Groq()
         
-        # Build context about what tools were used
+        # Build intelligent context about tools used and next logical steps
         tools_context = ""
-        if tools_used:
-            tools_context = f"\nTools that were just used: {', '.join(tools_used)}"
+        next_tool_suggestions = ""
         
-        # Create a prompt for generating follow-up questions
-        hint_prompt = f"""Based on this research conversation response, generate 3-4 intelligent follow-up questions that a curious researcher might want to ask next.
+        if tools_used:
+            tools_context = f"\nTools that were just executed: {', '.join(tools_used)}"
+            
+            # Map tools to logical next steps
+            tool_flow_map = {
+                'search_papers': [
+                    'extract_info (get details about specific papers)',
+                    'get_topic_papers (explore saved papers in this area)',
+                    'search_papers (search related topics)'
+                ],
+                'extract_info': [
+                    'search_papers (find similar or related papers)',
+                    'get_research_prompt (get structured research guidance)',
+                    'get_topic_papers (explore more papers in this topic)'
+                ],
+                'get_topic_papers': [
+                    'extract_info (get details about specific papers)',
+                    'search_papers (find newer papers in this area)',
+                    'get_research_prompt (get comprehensive research guidance)'
+                ],
+                'get_available_folders': [
+                    'get_topic_papers (explore papers in specific topics)',
+                    'search_papers (search for papers in interesting topics)',
+                    'get_research_prompt (get guidance for research planning)'
+                ],
+                'get_research_prompt': [
+                    'search_papers (execute the research plan)',
+                    'get_available_folders (see what topics are available)',
+                    'get_topic_papers (explore existing research collections)'
+                ]
+            }
+            
+            # Build next tool suggestions based on what was just used
+            suggested_next_tools = []
+            for tool in tools_used:
+                if tool in tool_flow_map:
+                    suggested_next_tools.extend(tool_flow_map[tool])
+            
+            if suggested_next_tools:
+                next_tool_suggestions = f"\nLogical next research steps: {', '.join(set(suggested_next_tools[:3]))}"
+        
+        # Create an enhanced prompt that considers tool integration
+        hint_prompt = f"""Based on this research conversation response, generate 3-4 intelligent follow-up questions that seamlessly integrate with the research tools available.
 
 Response that was just given:
-{last_response[:800]}...{tools_context}
+{last_response[:800]}...{tools_context}{next_tool_suggestions}
 
-Generate 3-4 specific, actionable follow-up questions that would naturally continue this research conversation. Focus on:
-- Deeper exploration of mentioned topics
-- Related research areas
-- Practical applications
-- Comparative analysis
-- Recent developments
+Available research capabilities:
+- search_papers: Find new papers on any topic
+- extract_info: Get detailed info about specific papers (need ArXiv ID)
+- get_topic_papers: View previously saved papers for a topic
+- get_available_folders: See what research topics are available
+- get_research_prompt: Get structured research guidance
 
-Format as a simple list, one question per line, without numbering or bullets. Each question should be engaging and specific to the content discussed."""
+Generate 3-4 specific, actionable follow-up questions that would:
+1. Naturally trigger the most useful research tools
+2. Build logically on what was just discovered
+3. Help users explore deeper or broader aspects
+4. Suggest practical next steps in their research journey
+
+Focus on questions that would benefit from:
+- Finding more papers (search_papers)
+- Getting paper details (extract_info)
+- Exploring related topics (get_topic_papers)
+- Comparing approaches or methodologies
+- Understanding practical applications
+- Identifying research trends or gaps
+
+Format as a simple list, one question per line, without numbering or bullets. Make each question specific to the content and designed to trigger helpful tool usage."""
         
         # Generate hints using LLM
         completion = client.chat.completions.create(
@@ -1001,43 +1077,56 @@ Format as a simple list, one question per line, without numbering or bullets. Ea
         if not response:
             return []
         
-        # Parse the response into individual questions
+        # Parse the response into individual questions with tool-aware emoji assignment
         questions = []
         for line in response.strip().split('\n'):
             line = line.strip()
             # Clean up any numbering or bullets that might have been added
             line = re.sub(r'^[\d\-\*\•]\s*', '', line)
             if line and len(line) > 10:  # Only include substantial questions
-                # Add emoji based on content
-                if any(word in line.lower() for word in ['paper', 'research', 'study']):
-                    line = f"📄 {line}"
-                elif any(word in line.lower() for word in ['compare', 'difference', 'versus']):
-                    line = f"⚖️ {line}"
-                elif any(word in line.lower() for word in ['trend', 'latest', 'recent', 'new']):
-                    line = f"📈 {line}"
-                elif any(word in line.lower() for word in ['application', 'use', 'implement']):
-                    line = f"🔧 {line}"
+                # Add tool-aware emoji based on content and likely tool usage
+                line_lower = line.lower()
+                
+                # Tool-specific emoji assignment
+                if any(word in line_lower for word in ['search', 'find', 'look for', 'papers on', 'research on']):
+                    line = f"🔍 {line}"  # search_papers likely
+                elif any(word in line_lower for word in ['details', 'more about', 'specific paper', 'paper id', 'arxiv']):
+                    line = f"📋 {line}"  # extract_info likely
+                elif any(word in line_lower for word in ['saved', 'existing', 'collection', 'topic papers']):
+                    line = f"📚 {line}"  # get_topic_papers likely
+                elif any(word in line_lower for word in ['available', 'topics', 'folders', 'what areas']):
+                    line = f"📁 {line}"  # get_available_folders likely
+                elif any(word in line_lower for word in ['guidance', 'how to research', 'research plan', 'approach']):
+                    line = f"🗺️ {line}"  # get_research_prompt likely
+                elif any(word in line_lower for word in ['compare', 'difference', 'versus', 'contrast']):
+                    line = f"⚖️ {line}"  # comparison analysis
+                elif any(word in line_lower for word in ['trend', 'latest', 'recent', 'new', 'developments']):
+                    line = f"📈 {line}"  # temporal analysis
+                elif any(word in line_lower for word in ['application', 'use', 'implement', 'practical']):
+                    line = f"🔧 {line}"  # practical applications
+                elif any(word in line_lower for word in ['methodology', 'method', 'approach', 'technique']):
+                    line = f"🔬 {line}"  # methodology focus
                 else:
-                    line = f"💡 {line}"
+                    line = f"💡 {line}"  # general exploration
                 questions.append(line)
         
         return questions[:4]  # Limit to 4 questions
         
     except Exception as e:
         print(f"Error generating LLM hints: {e}")
-        # Fallback to a few generic but useful questions
-        return [
-            "💡 Can you dive deeper into any specific aspect?",
-            "📈 What are the recent developments in this area?",
-            "🔧 How is this being applied in practice?"
-        ]
+        # Use tool-aware fallback questions based on what tools were just used
+        return generate_tool_aware_fallback_questions(tools_used or [])
 
 def send_interactive_hints(update, response: str, tools_used: list = None):
     """
-    Generate and send LLM-powered follow-up hints as interactive buttons.
-    Each button reveals a question when clicked.
+    Generate and send intelligent, tool-aware follow-up hints as interactive buttons.
+    Uses tool flow suggestions to provide structured research guidance.
     """
+    # Get LLM-generated hints
     hints = generate_llm_follow_up_hints("", response, tools_used)
+    
+    # Get intelligent tool flow suggestions
+    tool_suggestions = get_tool_flow_suggestions(tools_used or [], response)
     
     if hints:
         # Generate LLM-powered button labels from the hint questions
@@ -1049,16 +1138,45 @@ def send_interactive_hints(update, response: str, tools_used: list = None):
             callback_data = f"hint_{i}_{update.effective_user.id}"
             keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
         
+        # Add intelligent next-step suggestions if available
+        if tool_suggestions['immediate_next_steps']:
+            # Add a separator for next steps
+            keyboard.append([InlineKeyboardButton("——— Smart Next Steps ———", callback_data="separator")])
+            
+            # Add up to 2 immediate next step suggestions
+            for i, next_step in enumerate(tool_suggestions['immediate_next_steps'][:2]):
+                # Extract tool name and create smart button
+                if ' - ' in next_step:
+                    tool_name, description = next_step.split(' - ', 1)
+                    tool_emoji = {
+                        'extract_info': '📋',
+                        'search_papers': '🔍',
+                        'get_topic_papers': '📚',
+                        'get_available_folders': '📁',
+                        'get_research_prompt': '🗺️'
+                    }.get(tool_name, '🔧')
+                    
+                    button_text = f"{tool_emoji} {description[:35]}..."
+                    callback_data = f"smart_step_{i}_{update.effective_user.id}"
+                    keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
+        
         # Always add an "arXiv Papers" button for direct paper search
         arxiv_callback = f"arxiv_search_{update.effective_user.id}"
         keyboard.append([InlineKeyboardButton("📄 arXiv Papers", callback_data=arxiv_callback)])
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        # Send message with interactive hint buttons
+        # Create intelligent message based on tools used
+        if tools_used:
+            tools_text = ", ".join(tools_used)
+            message_text = f"🧠 Based on the {tools_text} results, here are intelligent next steps:"
+        else:
+            message_text = "💡 What to explore next? Click a question below:"
+        
+        # Send message with enhanced interactive buttons
         send_telegram_message(
             update, 
-            "💡 What to explore next? Click a question below:", 
+            message_text, 
             reply_markup=reply_markup
         )
         
@@ -1219,14 +1337,18 @@ def send_onboarding_research_suggestions(update):
 
 def handle_hint_callback(update, context):
     """
-    Handle callback when user clicks on a hint button.
-    Sends the question and triggers a bot response.
+    Handle callback when user clicks on a hint button, including smart step suggestions.
+    Sends the question and triggers a bot response with enhanced tool context.
     """
     query = update.callback_query
     query.answer()  # Acknowledge the callback
     
-    # Parse callback data: hint_{index}_{user_id} or onboard_{index}_{user_id}
+    # Parse callback data: hint_{index}_{user_id}, onboard_{index}_{user_id}, smart_step_{index}_{user_id}
     callback_data = query.data
+    
+    # Handle separator buttons (do nothing)
+    if callback_data == "separator":
+        return
     
     if callback_data.startswith('arxiv_search_'):
         # Handle arXiv Papers button click
@@ -1234,6 +1356,59 @@ def handle_hint_callback(update, context):
         
         # Send a prompt asking what to search for
         query.message.reply_text("📄 What research topic would you like to search for on arXiv?\n\nJust type your topic and I'll find the latest papers for you!")
+        
+    elif callback_data.startswith('smart_step_'):
+        # Handle smart next step suggestions
+        parts = callback_data.split('_')
+        if len(parts) >= 3:
+            step_index = int(parts[2])
+            user_id = int(parts[3])
+            
+            # Get user's stored tool suggestions
+            udata = get_user_data(user_id)
+            tool_suggestions = udata.get('tool_suggestions', {})
+            
+            if 'immediate_next_steps' in tool_suggestions and step_index < len(tool_suggestions['immediate_next_steps']):
+                next_step = tool_suggestions['immediate_next_steps'][step_index]
+                
+                # Extract tool name and description
+                if ' - ' in next_step:
+                    tool_name, description = next_step.split(' - ', 1)
+                    
+                    # Create an intelligent question that will trigger the right tool
+                    tool_questions = {
+                        'extract_info': "Can you get detailed information about the most relevant paper from the results?",
+                        'search_papers': f"Search for more papers related to this topic",
+                        'get_topic_papers': "Show me papers that have been saved in this research area",
+                        'get_available_folders': "What other research topics are available to explore?",
+                        'get_research_prompt': "Give me structured research guidance for this topic"
+                    }
+                    
+                    smart_question = tool_questions.get(tool_name, description)
+                    
+                    # Enhance the question with tool context for better LLM tool selection
+                    enhanced_question = enhance_question_with_tool_context(smart_question, tool_name)
+                    
+                    # Send the enhanced question
+                    query.message.reply_text(f"🧠 Smart suggestion: {enhanced_question}")
+                    
+                    # Create enhanced context for processing
+                    fake_context = type('Context', (), {})() 
+                    fake_context.args = enhanced_question.split()
+                    
+                    # Create a new update object
+                    fake_update = type('Update', (), {})()  
+                    fake_update.effective_user = query.from_user
+                    fake_update.effective_chat = query.message.chat
+                    fake_update.message = query.message
+                    
+                    # Use last model or default to llama
+                    last_model = udata.get('last_model', 'llama')
+                    
+                    if last_model == 'deepseek':
+                        deepseek_command(fake_update, fake_context)
+                    else:
+                        llama_command(fake_update, fake_context)
         
     elif callback_data.startswith('hint_') or callback_data.startswith('onboard_'):
         parts = callback_data.split('_')
@@ -1257,12 +1432,18 @@ def handle_hint_callback(update, context):
                 # Remove emoji prefix from the question for cleaner display
                 clean_question = question.split(' ', 1)[1] if ' ' in question else question
                 
-                # Send the question as if the user asked it
-                query.message.reply_text(f"💬 {clean_question}")
+                # Predict which tool this question will likely trigger
+                predicted_tool = predict_next_tool_from_question(clean_question)
                 
-                # Create a fake context with the question as args
-                fake_context = type('Context', (), {})()
-                fake_context.args = clean_question.split()
+                # Enhance the question with tool context for better LLM tool selection
+                enhanced_question = enhance_question_with_tool_context(clean_question, predicted_tool)
+                
+                # Send the enhanced question as if the user asked it
+                query.message.reply_text(f"💬 {enhanced_question}")
+                
+                # Create a fake context with the enhanced question as args
+                fake_context = type('Context', (), {})() 
+                fake_context.args = enhanced_question.split()
                 
                 # Create a new update object for the question
                 fake_update = type('Update', (), {})()  
@@ -1712,6 +1893,17 @@ def llama_command(update, context):
     q = ' '.join(context.args)
     print(f"LLAMA query from user {user_id}: {q}")
     
+    # Predict which tool this question might trigger for proactive guidance
+    predicted_tool = predict_next_tool_from_question(q)
+    
+    # Enhance the question with tool context if research is enabled
+    auto_research_enabled = udata.get('auto_research', True)
+    if auto_research_enabled and predicted_tool:
+        enhanced_q = enhance_question_with_tool_context(q, predicted_tool)
+        print(f"Enhanced query with tool context: {enhanced_q}")
+        # Use enhanced question for better tool selection
+        q = enhanced_q
+    
     # Add user message to history
     udata['llama_history'].append({"role": "user", "content": q})
     
@@ -1782,6 +1974,17 @@ def deepseek_command(update, context):
         
     q = ' '.join(context.args)
     print(f"Deepseek query from user {user_id}: {q}")
+    
+    # Predict which tool this question might trigger for proactive guidance
+    predicted_tool = predict_next_tool_from_question(q)
+    
+    # Enhance the question with tool context if research is enabled
+    auto_research_enabled = udata.get('auto_research', True)
+    if auto_research_enabled and predicted_tool:
+        enhanced_q = enhance_question_with_tool_context(q, predicted_tool)
+        print(f"Enhanced query with tool context: {enhanced_q}")
+        # Use enhanced question for better tool selection
+        q = enhanced_q
     
     # Add user message to history
     udata['deepseek_history'].append({"role": "user", "content": q})
