@@ -1,6 +1,6 @@
 import os
 import json
-import arxiv
+import requests
 from typing import List
 from flask import Flask, render_template, request, jsonify
 from groq import Groq
@@ -24,141 +24,47 @@ PAPER_DIR = "papers"
 # Maximum tokens to allow in conversation history before truncating
 MAX_TOKENS = 4000
 
-# Ensure papers directory exists
-os.makedirs(PAPER_DIR, exist_ok=True)
+RESEARCH_SERVER_URL = "https://mcp-arxiv-server.onrender.com"
 
 # ============================================================================
-# RESEARCH FUNCTIONALITY (from inquisita_spark)
+# RESEARCH FUNCTIONALITY (via remote MCP server)
 # ============================================================================
 
 def search_papers(topic: str, max_results: int = 5) -> List[str]:
     """
-    Search for papers on arXiv based on a topic and store their information.
-    
-    Args:
-        topic: The topic to search for
-        max_results: Maximum number of results to retrieve (default: 5)
-        
-    Returns:
-        List of paper IDs found in the search
+    Call the remote research server to search for papers on a topic.
+    Returns: List of paper IDs
     """
-    
-    # Use arxiv to find the papers 
-    client = arxiv.Client()
+    resp = requests.post(f"{RESEARCH_SERVER_URL}/search_papers", json={"topic": topic, "max_results": max_results})
+    resp.raise_for_status()
+    return resp.json().get("paper_ids", [])
 
-    # Search for the most relevant articles matching the queried topic
-    search = arxiv.Search(
-        query = topic,
-        max_results = max_results,
-        sort_by = arxiv.SortCriterion.Relevance
-    )
-
-    papers = client.results(search)
-    
-    # Create directory for this topic
-    path = os.path.join(PAPER_DIR, topic.lower().replace(" ", "_"))
-    os.makedirs(path, exist_ok=True)
-    
-    file_path = os.path.join(path, "papers_info.json")
-
-    # Try to load existing papers info
-    try:
-        with open(file_path, "r") as json_file:
-            papers_info = json.load(json_file)
-    except (FileNotFoundError, json.JSONDecodeError):
-        papers_info = {}
-
-    # Process each paper and add to papers_info  
-    paper_ids = []
-    for paper in papers:
-        paper_id = paper.entry_id.split('/')[-1]
-        paper_ids.append(paper_id)
-        
-        # Store paper information
-        papers_info[paper_id] = {
-            "title": paper.title,
-            "authors": [author.name for author in paper.authors],
-            "summary": paper.summary,
-            "published": paper.published.isoformat() if paper.published else None,
-            "pdf_url": paper.pdf_url,
-            "entry_id": paper.entry_id,
-            "categories": paper.categories
-        }
-    
-    # Save updated papers info
-    with open(file_path, "w") as json_file:
-        json.dump(papers_info, json_file, indent=2)
-    
-    return paper_ids
-
-def extract_info(paper_id: str) -> str:
+def extract_info(paper_id: str):
     """
-    Search for information about a specific paper across all topic directories.
-    
-    Args:
-        paper_id: The ID of the paper to look for
-        
-    Returns:
-        JSON string with paper information if found, error message if not found
+    Call the remote research server to get info about a specific paper.
+    Returns: JSON string with paper info
     """
-    
-    # Search through all topic directories
-    for topic_dir in os.listdir(PAPER_DIR):
-        topic_path = os.path.join(PAPER_DIR, topic_dir)
-        if os.path.isdir(topic_path):
-            papers_file = os.path.join(topic_path, "papers_info.json")
-            if os.path.exists(papers_file):
-                try:
-                    with open(papers_file, "r") as f:
-                        papers_info = json.load(f)
-                        if paper_id in papers_info:
-                            return json.dumps(papers_info[paper_id], indent=2)
-                except (FileNotFoundError, json.JSONDecodeError):
-                    continue
-    
-    return f"Paper with ID '{paper_id}' not found in any topic directory."
+    resp = requests.get(f"{RESEARCH_SERVER_URL}/extract_info", params={"paper_id": paper_id})
+    resp.raise_for_status()
+    return resp.json()
 
-def get_available_folders() -> List[str]:
+def get_available_folders():
     """
-    List all available topic folders in the papers directory.
-    
-    Returns:
-        List of available topic folder names
+    Call the remote research server to list all available topic folders.
+    Returns: List of topic folder names
     """
-    
-    folders = []
-    if os.path.exists(PAPER_DIR):
-        for item in os.listdir(PAPER_DIR):
-            item_path = os.path.join(PAPER_DIR, item)
-            if os.path.isdir(item_path):
-                folders.append(item)
-    
-    return folders
+    resp = requests.get(f"{RESEARCH_SERVER_URL}/get_available_folders")
+    resp.raise_for_status()
+    return resp.json().get("topics", [])
 
-def get_topic_papers(topic: str) -> str:
+def get_topic_papers(topic: str):
     """
-    Get detailed information about papers on a specific topic.
-    
-    Args:
-        topic: The research topic to retrieve papers for
-        
-    Returns:
-        JSON string with all papers information for the topic
+    Call the remote research server to get all papers for a topic.
+    Returns: JSON string with all papers info
     """
-    
-    topic_folder = topic.lower().replace(" ", "_")
-    topic_path = os.path.join(PAPER_DIR, topic_folder)
-    papers_file = os.path.join(topic_path, "papers_info.json")
-    
-    if not os.path.exists(papers_file):
-        return f"No papers found for topic '{topic}'. Use search_papers to find papers first."
-    
-    try:
-        with open(papers_file, "r") as f:
-            papers_info = json.load(f)
-            return json.dumps(papers_info, indent=2)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return f"Error reading papers information for topic '{topic}'."
+    resp = requests.get(f"{RESEARCH_SERVER_URL}/get_topic_papers", params={"topic": topic})
+    resp.raise_for_status()
+    return resp.json()
 
 # ============================================================================
 # LLM FUNCTIONALITY (Groq API)
@@ -320,118 +226,72 @@ def help_command(update, context):
 
 def search_command(update, context):
     user_id = update.effective_user.id
-    
-    if not context.args:
-        send_telegram_message(update, "Please provide a research topic.\nUsage: /search machine learning")
+    args = context.args
+    if not args:
+        send_telegram_message(update, "Usage: /search <topic>")
         return
-    
-    topic = ' '.join(context.args)
-    send_telegram_message(update, f"🔍 Searching ArXiv for papers on '{topic}'...")
-    
+    topic = " ".join(args)
     try:
-        paper_ids = search_papers(topic, max_results=5)
-        if paper_ids:
-            response = f"✅ Found {len(paper_ids)} papers on '{topic}':\n\n"
-            
-            # Get paper details for display
-            topic_info = get_topic_papers(topic)
-            papers_data = json.loads(topic_info)
-            
-            for i, paper_id in enumerate(paper_ids[:3], 1):  # Show first 3
-                paper = papers_data.get(paper_id, {})
-                response += f"{i}. **{paper.get('title', 'Unknown Title')}**\n"
-                response += f"   ID: {paper_id}\n"
-                response += f"   Authors: {', '.join(paper.get('authors', [])[:2])}{'...' if len(paper.get('authors', [])) > 2 else ''}\n\n"
-            
-            if len(paper_ids) > 3:
-                response += f"... and {len(paper_ids) - 3} more papers.\n\n"
-            
-            response += f"Use `/papers {topic}` to see all papers or `/paper <id>` for details."
-            send_telegram_message(update, response)
-        else:
-            send_telegram_message(update, f"❌ No papers found for '{topic}'. Try a different search term.")
-    except Exception as e:
-        print(f"Error in search_command: {str(e)}")
-        send_telegram_message(update, f"❌ Error searching papers: {str(e)}")
-
-def papers_command(update, context):
-    if not context.args:
-        send_telegram_message(update, "Please provide a topic.\nUsage: /papers machine learning")
-        return
-    
-    topic = ' '.join(context.args)
-    
-    try:
-        papers_info = get_topic_papers(topic)
-        if papers_info.startswith("No papers found") or papers_info.startswith("Error reading"):
-            send_telegram_message(update, f"❌ {papers_info}")
-            return
-        
-        papers_data = json.loads(papers_info)
-        if not papers_data:
+        paper_ids = search_papers(topic)
+        if not paper_ids:
             send_telegram_message(update, f"No papers found for topic '{topic}'.")
             return
-        
+        msg = f"Found {len(paper_ids)} papers for topic '{topic}':\n" + "\n".join(paper_ids)
+        send_telegram_message(update, msg)
+    except Exception as e:
+        send_telegram_message(update, f"Error searching papers: {e}")
+
+def papers_command(update, context):
+    args = context.args
+    if not args:
+        send_telegram_message(update, "Usage: /papers <topic>")
+        return
+    topic = " ".join(args)
+    try:
+        papers_info = get_topic_papers(topic)
+        if not papers_info:
+            send_telegram_message(update, f"No papers found for topic '{topic}'.")
+            return
+        papers_data = papers_info
         response = f"📚 Papers on '{topic}' ({len(papers_data)} found):\n\n"
-        
-        for i, (paper_id, paper) in enumerate(papers_data.items(), 1):
+        for i, paper in enumerate(papers_data, 1):
             response += f"{i}. **{paper.get('title', 'Unknown Title')}**\n"
-            response += f"   ID: {paper_id}\n"
+            response += f"   ID: {paper.get('id', 'Unknown ID')}\n"
             response += f"   Authors: {', '.join(paper.get('authors', [])[:2])}{'...' if len(paper.get('authors', [])) > 2 else ''}\n"
             response += f"   Published: {paper.get('published', 'Unknown')[:10]}\n\n"
-        
         response += "Use `/paper <id>` to get detailed information about a specific paper."
         send_telegram_message(update, response)
-        
     except Exception as e:
-        print(f"Error in papers_command: {str(e)}")
-        send_telegram_message(update, f"❌ Error retrieving papers: {str(e)}")
+        send_telegram_message(update, f"Error retrieving papers: {e}")
 
 def paper_command(update, context):
-    if not context.args:
-        send_telegram_message(update, "Please provide a paper ID.\nUsage: /paper 2301.07041")
+    args = context.args
+    if not args:
+        send_telegram_message(update, "Usage: /paper <paper_id>")
         return
-    
-    paper_id = context.args[0]
-    
+    paper_id = args[0]
     try:
-        paper_info = extract_info(paper_id)
-        if paper_info.startswith("Paper with ID"):
-            send_telegram_message(update, f"❌ {paper_info}")
+        info = extract_info(paper_id)
+        if "error" in info:
+            send_telegram_message(update, f"Error: {info['error']}")
             return
-        
-        paper_data = json.loads(paper_info)
-        
-        response = f"📄 **{paper_data.get('title', 'Unknown Title')}**\n\n"
-        response += f"**Authors:** {', '.join(paper_data.get('authors', []))}\n\n"
-        response += f"**Published:** {paper_data.get('published', 'Unknown')[:10]}\n\n"
-        response += f"**Categories:** {', '.join(paper_data.get('categories', []))}\n\n"
-        response += f"**Summary:**\n{paper_data.get('summary', 'No summary available.')}\n\n"
-        response += f"**PDF:** {paper_data.get('pdf_url', 'Not available')}\n"
-        response += f"**ArXiv:** {paper_data.get('entry_id', 'Not available')}"
-        
-        send_telegram_message(update, response)
-        
+        msg = f"Paper Info for {paper_id}:\n"
+        msg += f"Title: {info.get('title', 'N/A')}\n"
+        msg += f"Authors: {', '.join(info.get('authors', []))}\n"
+        msg += f"Abstract: {info.get('abstract', 'N/A')}\n"
+        msg += f"URL: {info.get('url', 'N/A')}\n"
+        send_telegram_message(update, msg)
     except Exception as e:
-        print(f"Error in paper_command: {str(e)}")
-        send_telegram_message(update, f"❌ Error retrieving paper details: {str(e)}")
+        send_telegram_message(update, f"Error retrieving paper info: {e}")
 
 def topics_command(update, context):
     try:
-        folders = get_available_folders()
-        if folders:
-            response = "📂 Available research topics:\n\n"
-            for i, folder in enumerate(folders, 1):
-                # Convert folder name back to readable format
-                topic_name = folder.replace("_", " ").title()
-                response += f"{i}. {topic_name}\n"
-            
-            response += f"\nUse `/papers <topic>` to view papers for a specific topic."
-        else:
-            response = "No research topics found. Use `/search <topic>` to start researching!"
-        
-        send_telegram_message(update, response)
-        
+        topics = get_available_folders()
+        if not topics:
+            send_telegram_message(update, "No topics available.")
+            return
+        msg = "Available topics:\n" + "\n".join(topics)
+        send_telegram_message(update, msg)
     except Exception as e:
         print(f"Error in topics_command: {str(e)}")
         send_telegram_message(update, f"❌ Error retrieving topics: {str(e)}")
