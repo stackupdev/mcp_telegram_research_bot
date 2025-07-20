@@ -995,21 +995,12 @@ def send_interactive_hints(update, response: str, tools_used: list = None):
     hints = generate_llm_follow_up_hints("", response, tools_used)
     
     if hints:
-        # Create inline keyboard with concise category buttons
+        # Generate LLM-powered button labels from the hint questions
+        button_labels = generate_button_labels_from_hints(hints)
+        
+        # Create inline keyboard with LLM-generated button text
         keyboard = []
-        for i, hint in enumerate(hints):
-            # Create concise category-based button text
-            if hint.startswith('📄'):
-                button_text = "📄 Research Details"
-            elif hint.startswith('⚖️'):
-                button_text = "⚖️ Compare & Contrast"
-            elif hint.startswith('📈'):
-                button_text = "📈 Latest Trends"
-            elif hint.startswith('🔧'):
-                button_text = "🔧 Practical Applications"
-            else:
-                button_text = "💡 Deep Dive"
-            
+        for i, (hint, button_text) in enumerate(zip(hints, button_labels)):
             callback_data = f"hint_{i}_{update.effective_user.id}"
             keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
         
@@ -1027,6 +1018,156 @@ def send_interactive_hints(update, response: str, tools_used: list = None):
         udata = get_user_data(user_id)
         udata['current_hints'] = hints
 
+def generate_button_labels_from_hints(hints: list) -> list:
+    """
+    Generate concise, meaningful button labels from hint questions using LLM.
+    """
+    if not hints:
+        return []
+    
+    try:
+        client = Groq()
+        
+        # Create prompt for generating button labels
+        hints_text = "\n".join([f"{i+1}. {hint}" for i, hint in enumerate(hints)])
+        
+        label_prompt = f"""Convert these research questions into concise 2-3 word button labels with relevant emojis.
+
+Questions:
+{hints_text}
+
+For each question, create a short, catchy button label that captures the essence. Format as:
+1. [emoji] [2-3 words]
+2. [emoji] [2-3 words]
+
+Examples:
+- "What are quantum computing applications?" → "⚛️ Quantum Apps"
+- "How do neural networks work?" → "🧠 Neural Networks"
+- "What's new in climate research?" → "🌍 Climate Updates"
+
+Make labels specific to the actual question content, not generic categories."""
+        
+        completion = client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[
+                {"role": "system", "content": "You are an expert at creating concise, meaningful button labels for research topics. Always include relevant emojis."},
+                {"role": "user", "content": label_prompt}
+            ],
+            max_tokens=150,
+            temperature=0.3
+        )
+        
+        response = completion.choices[0].message.content
+        if not response:
+            return [f"💡 Option {i+1}" for i in range(len(hints))]
+        
+        # Parse the response into button labels
+        labels = []
+        for line in response.strip().split('\n'):
+            line = line.strip()
+            # Extract label after number and period
+            if '. ' in line:
+                label = line.split('. ', 1)[1]
+                labels.append(label)
+        
+        # Ensure we have the right number of labels
+        while len(labels) < len(hints):
+            labels.append(f"💡 Option {len(labels)+1}")
+        
+        return labels[:len(hints)]
+        
+    except Exception as e:
+        print(f"Error generating button labels: {e}")
+        # Fallback to generic labels
+        return [f"💡 Option {i+1}" for i in range(len(hints))]
+
+def generate_onboarding_research_terms() -> list:
+    """
+    Generate trending research terms for new users to explore.
+    """
+    try:
+        client = Groq()
+        
+        onboarding_prompt = """Generate 4-5 trending research topics that would interest curious researchers in 2024. 
+
+Focus on cutting-edge areas like:
+- AI and machine learning advances
+- Quantum computing breakthroughs
+- Climate and sustainability tech
+- Biotechnology innovations
+- Space exploration
+- Renewable energy
+
+Format as simple research questions, one per line:
+What are the latest developments in [topic]?
+How is [technology] being applied in [field]?
+
+Make them specific and engaging for someone wanting to explore current research."""
+        
+        completion = client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[
+                {"role": "system", "content": "You are a research curator who suggests the most interesting and current research topics."},
+                {"role": "user", "content": onboarding_prompt}
+            ],
+            max_tokens=200,
+            temperature=0.7
+        )
+        
+        response = completion.choices[0].message.content
+        if not response:
+            return []
+        
+        # Parse questions from response
+        questions = []
+        for line in response.strip().split('\n'):
+            line = line.strip()
+            if line and ('?' in line or 'latest' in line.lower() or 'how' in line.lower() or 'what' in line.lower()):
+                questions.append(line)
+        
+        return questions[:5]  # Limit to 5 questions
+        
+    except Exception as e:
+        print(f"Error generating onboarding terms: {e}")
+        return [
+            "What are the latest developments in quantum computing?",
+            "How is AI being applied in healthcare?",
+            "What breakthroughs are happening in renewable energy?",
+            "How is machine learning advancing climate research?"
+        ]
+
+def send_onboarding_research_suggestions(update):
+    """
+    Send trending research topics as clickable buttons for new users.
+    """
+    # Generate trending research questions
+    research_questions = generate_onboarding_research_terms()
+    
+    if research_questions:
+        # Generate button labels for the research questions
+        button_labels = generate_button_labels_from_hints(research_questions)
+        
+        # Create inline keyboard with research topic buttons
+        keyboard = []
+        user_id = update.effective_user.id
+        
+        for i, (question, button_text) in enumerate(zip(research_questions, button_labels)):
+            callback_data = f"onboard_{i}_{user_id}"
+            keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        # Send message with trending research topics
+        send_telegram_message(
+            update,
+            "🔥 **Trending Research Topics** - Click to explore:",
+            reply_markup=reply_markup
+        )
+        
+        # Store onboarding questions in user data for callback handling
+        udata = get_user_data(user_id)
+        udata['onboarding_questions'] = research_questions
+
 def handle_hint_callback(update, context):
     """
     Handle callback when user clicks on a hint button.
@@ -1035,23 +1176,30 @@ def handle_hint_callback(update, context):
     query = update.callback_query
     query.answer()  # Acknowledge the callback
     
-    # Parse callback data: hint_{index}_{user_id}
+    # Parse callback data: hint_{index}_{user_id} or onboard_{index}_{user_id}
     callback_data = query.data
-    if callback_data.startswith('hint_'):
+    
+    if callback_data.startswith('hint_') or callback_data.startswith('onboard_'):
         parts = callback_data.split('_')
         if len(parts) >= 3:
             hint_index = int(parts[1])
             user_id = int(parts[2])
             
-            # Get user's stored hints
+            # Get user's stored hints or onboarding questions
             udata = get_user_data(user_id)
-            hints = udata.get('current_hints', [])
             
-            if hint_index < len(hints):
-                hint_question = hints[hint_index]
+            if callback_data.startswith('onboard_'):
+                # Handle onboarding research topic selection
+                questions = udata.get('onboarding_questions', [])
+            else:
+                # Handle regular conversation hints
+                questions = udata.get('current_hints', [])
+            
+            if hint_index < len(questions):
+                question = questions[hint_index]
                 
                 # Remove emoji prefix from the question for cleaner display
-                clean_question = hint_question.split(' ', 1)[1] if ' ' in hint_question else hint_question
+                clean_question = question.split(' ', 1)[1] if ' ' in question else question
                 
                 # Send the question as if the user asked it
                 query.message.reply_text(f"💬 {clean_question}")
@@ -1061,12 +1209,16 @@ def handle_hint_callback(update, context):
                 fake_context.args = clean_question.split()
                 
                 # Create a new update object for the question
-                fake_update = type('Update', (), {})()
+                fake_update = type('Update', (), {})()  
                 fake_update.effective_user = query.from_user
+                fake_update.effective_chat = query.message.chat
                 fake_update.message = query.message
                 
-                # Determine which model was last used and respond with the same model
-                last_model = udata.get('last_model', 'llama')
+                # For onboarding, default to llama; for hints, use last model
+                if callback_data.startswith('onboard_'):
+                    last_model = 'llama'  # Default for new users
+                else:
+                    last_model = udata.get('last_model', 'llama')
                 
                 if last_model == 'deepseek':
                     # Process as deepseek command
@@ -1312,6 +1464,9 @@ def start(update, context):
         "Select a chat mode below or toggle research mode!",
         reply_markup=reply_markup
     )
+    
+    # Show trending research topics as clickable buttons for new users
+    send_onboarding_research_suggestions(update)
 
 def help_command(update, context):
     user_id = update.effective_user.id
