@@ -1458,20 +1458,38 @@ def start(update, context):
     
     send_telegram_message(
         update,
-        f"🔬 Welcome to Inquisita Spark Research Assistant, {user_name}!\n\n" +
+        f"Hi {user_name}! 🚀 Welcome to Inquisita Spark - your AI-powered research companion!\n\n" +
         f"{get_conversation_status(user_id)}\n\n" +
-        "🤖 Intelligent Research Chat:\n" +
-        "• Chat naturally with LLAMA or Deepseek\n" +
-        "• AI automatically searches ArXiv papers when needed\n" +
-        "• Get research insights in conversational format\n\n" +
-        "📚 Manual Research Tools:\n" +
-        "• Direct paper search and topic browsing\n" +
-        "• Detailed paper information retrieval\n\n" +
-        "💡 Just ask questions like:\n" +
-        "• \"What are the latest papers on quantum computing?\"\n" +
-        "• \"Find research about neural networks\"\n" +
-        "• \"Tell me about recent AI developments\"\n\n" +
-        "Choose an AI assistant below to start chatting!",
+        "🎆 What makes this special?\n" +
+        "I can chat naturally AND automatically search thousands of academic papers from ArXiv when you need research insights. No more switching between tools!\n\n" +
+        "🤖 Two brilliant AI assistants available:\n" +
+        "• LLAMA - Great for general research and explanations\n" +
+        "• Deepseek - Excellent for deep technical analysis\n\n" +
+        "💬 Smart Chat Commands:\n" +
+        "/llama <question> - Chat with LLAMA AI\n" +
+        "/deepseek <question> - Chat with Deepseek AI\n" +
+        "Just ask naturally! AI searches papers automatically when needed.\n\n" +
+        "📚 Manual Research Commands:\n" +
+        "/search <topic> - Search ArXiv papers directly\n" +
+        "/papers <topic> - View papers for specific topic\n" +
+        "/paper <id> - Get detailed paper information\n" +
+        "/topics - List all available research topics\n" +
+        "/prompt <topic> - Generate comprehensive research prompt\n\n" +
+        "🔧 Utility Commands:\n" +
+        "/reset - Clear conversation history\n" +
+        "/help - Show detailed help and toggle auto-research\n\n" +
+        "🚀 Ready to explore? Try asking:\n" +
+        "• \"What's new in quantum computing research?\"\n" +
+        "• \"Explain recent AI safety developments\"\n" +
+        "• \"Find papers about sustainable energy\"\n" +
+        "• \"What are the latest breakthroughs in cancer research?\"\n" +
+        "• \"How is machine learning being used in drug discovery?\"\n" +
+        "• \"Show me research on climate change mitigation\"\n" +
+        "• \"What's happening in space exploration technology?\"\n" +
+        "• \"Find studies on mental health and social media\"\n" +
+        "• \"Explain advances in renewable energy storage\"\n" +
+        "• \"What's new in robotics and automation?\"\n\n" +
+        "👇 Choose your AI assistant below to get started!",
         reply_markup=reply_markup
     )
 
