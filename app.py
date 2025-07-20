@@ -1222,16 +1222,21 @@ def llama_command(update, context):
     # Truncate conversation if needed before sending to API
     udata['llama_history'] = truncate_conversation(udata['llama_history'])
     
-    # Add system message to guide the AI on tool usage (only if not already present)
-    if not udata['llama_history'] or udata['llama_history'][0].get('role') != 'system':
-        system_message = {
-            "role": "system",
-            "content": "You are a helpful research assistant with access to ArXiv academic papers. When users ask about research topics, recent papers, or want to find academic information, automatically use the available tools to search for and retrieve relevant papers. Integrate the research results naturally into your responses. Be conversational and helpful."
-        }
-        udata['llama_history'].insert(0, system_message)
-    
     # Check if auto-research is enabled for this user
     auto_research_enabled = udata.get('auto_research', True)
+    
+    # Add system message based on research mode (only if not already present)
+    if not udata['llama_history'] or udata['llama_history'][0].get('role') != 'system':
+        if auto_research_enabled:
+            system_content = "You are a helpful research assistant with access to ArXiv academic papers. When users ask about research topics, recent papers, or want to find academic information, automatically use the available tools to search for and retrieve relevant papers. Integrate the research results naturally into your responses. Be conversational and helpful."
+        else:
+            system_content = "You are a helpful, friendly AI assistant. Engage in natural conversation and provide helpful responses on a wide variety of topics. Be conversational, informative, and engaging. Do not mention research papers, academic sources, or offer to search for papers."
+        
+        system_message = {
+            "role": "system",
+            "content": system_content
+        }
+        udata['llama_history'].insert(0, system_message)
     
     # Send animated search indicator for research queries (only if auto-research is enabled)
     search_thread = None
@@ -1276,16 +1281,21 @@ def deepseek_command(update, context):
     # Truncate conversation if needed before sending to API
     udata['deepseek_history'] = truncate_conversation(udata['deepseek_history'])
     
-    # Add system message to guide the AI on tool usage (only if not already present)
-    if not udata['deepseek_history'] or udata['deepseek_history'][0].get('role') != 'system':
-        system_message = {
-            "role": "system",
-            "content": "You are a helpful research assistant with access to ArXiv academic papers. When users ask about research topics, recent papers, or want to find academic information, automatically use the available tools to search for and retrieve relevant papers. Integrate the research results naturally into your responses. Be conversational and helpful."
-        }
-        udata['deepseek_history'].insert(0, system_message)
-    
     # Check if auto-research is enabled for this user
     auto_research_enabled = udata.get('auto_research', True)
+    
+    # Add system message based on research mode (only if not already present)
+    if not udata['deepseek_history'] or udata['deepseek_history'][0].get('role') != 'system':
+        if auto_research_enabled:
+            system_content = "You are a helpful research assistant with access to ArXiv academic papers. When users ask about research topics, recent papers, or want to find academic information, automatically use the available tools to search for and retrieve relevant papers. Integrate the research results naturally into your responses. Be conversational and helpful."
+        else:
+            system_content = "You are a helpful, friendly AI assistant. Engage in natural conversation and provide helpful responses on a wide variety of topics. Be conversational, informative, and engaging. Do not mention research papers, academic sources, or offer to search for papers."
+        
+        system_message = {
+            "role": "system",
+            "content": system_content
+        }
+        udata['deepseek_history'].insert(0, system_message)
     
     # Send animated search indicator for research queries (only if auto-research is enabled)
     search_thread = None
