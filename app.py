@@ -2125,15 +2125,34 @@ def message_handler(update, context):
         )
         return
     
-    # Handle keyboard button presses for starting conversations
+    # Handle keyboard button presses for AI assistant selection (pure toggle)
     if text == "Chat with LLAMA":
         set_conversation_mode(user_id, 'llama')
-        context.args = ["Hi,", "I'd", "like", "to", "chat"]
-        return llama_command(update, context)
+        reply_markup = update_keyboard(user_id)
+        send_telegram_message(
+            update, 
+            f"🤖 LLama Research Assistant\n\n{get_conversation_status(user_id)}\n\n"
+            f"I can help you with research questions and general chat. I have access to ArXiv papers and can search for academic research automatically when needed.\n\n"
+            f"Just ask me anything! You can continue chatting by typing messages directly.",
+            reply_markup=reply_markup
+        )
+        # Show trending research topics as clickable buttons for users who just selected LLama
+        send_onboarding_research_suggestions(update)
+        return
+        
     elif text == "Chat with Deepseek":
         set_conversation_mode(user_id, 'deepseek')
-        context.args = ["Hi,", "I'd", "like", "to", "chat"]
-        return deepseek_command(update, context)
+        reply_markup = update_keyboard(user_id)
+        send_telegram_message(
+            update, 
+            f"🧠 Deepseek Research Assistant\n\n{get_conversation_status(user_id)}\n\n"
+            f"I can help you with research questions and general chat. I have access to ArXiv papers and can search for academic research automatically when needed.\n\n"
+            f"Just ask me anything! You can continue chatting by typing messages directly.",
+            reply_markup=reply_markup
+        )
+        # Show trending research topics as clickable buttons for users who just selected Deepseek
+        send_onboarding_research_suggestions(update)
+        return
     
     # Check if user is in an active conversation mode
     if is_in_conversation_mode(user_id):
