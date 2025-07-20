@@ -335,15 +335,36 @@ def get_topic_papers(topic: str):
                 current_paper['summary'] = ''
                 continue
                 
-            elif in_summary and line and not line.startswith('#') and not line.startswith('Total papers:') and line != '---':
-                # Collect all summary lines
-                if 'summary' not in current_paper:
-                    current_paper['summary'] = ''
-                if current_paper['summary']:
-                    current_paper['summary'] += ' '
-                current_paper['summary'] += line.replace('...', '')
+            elif in_summary and line:
+                # Collect all summary lines - be more permissive about what we collect
+                # Stop only on clear section boundaries
+                if line.startswith('## ') and not line.startswith('## Papers on'):
+                    # This is a new paper, stop collecting summary
+                    in_summary = False
+                    # Process this line as a new paper title
+                    if current_paper and 'title' in current_paper:
+                        papers.append(current_paper)
+                    current_paper = {'title': line[3:]}
+                elif line.startswith('---') or line.startswith('Total papers:'):
+                    # End of section
+                    in_summary = False
+                else:
+                    # Continue collecting summary text
+                    if 'summary' not in current_paper:
+                        current_paper['summary'] = ''
+                    if current_paper['summary']:
+                        current_paper['summary'] += ' '
+                    current_paper['summary'] += line.replace('...', '').strip()
                 
-            elif line.startswith('## ') or line.startswith('---') or line.startswith('Total papers:'):
+            elif line.startswith('## ') and not line.startswith('## Papers on'):
+                # New paper title (handle case where we're not in summary mode)
+                if not in_summary:
+                    if current_paper and 'title' in current_paper:
+                        papers.append(current_paper)
+                    current_paper = {'title': line[3:]}
+                in_summary = False
+                
+            elif line.startswith('---') or line.startswith('Total papers:'):
                 # End of current paper or section
                 in_summary = False
         
