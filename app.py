@@ -1035,21 +1035,23 @@ def generate_button_labels_from_hints(hints: list) -> list:
         # Create prompt for generating button labels
         hints_text = "\n".join([f"{i+1}. {hint}" for i, hint in enumerate(hints)])
         
-        label_prompt = f"""Convert these research questions into concise 2-3 word button labels with relevant emojis.
+        label_prompt = f"""Convert these research questions into very short 1-2 word button labels with emojis.
 
 Questions:
 {hints_text}
 
-For each question, create a short, catchy button label that captures the essence. Format as:
-1. [emoji] [2-3 words]
-2. [emoji] [2-3 words]
+For each question, create an ultra-compact button label. Format as:
+1. [emoji] [1-2 words max]
+2. [emoji] [1-2 words max]
 
 Examples:
-- "What are quantum computing applications?" → "⚛️ Quantum Apps"
-- "How do neural networks work?" → "🧠 Neural Networks"
-- "What's new in climate research?" → "🌍 Climate Updates"
+- "What are quantum computing applications?" → "⚛️ Quantum"
+- "How do neural networks work?" → "🧠 Neural"
+- "What's new in climate research?" → "🌍 Climate"
+- "Latest AI developments" → "🤖 AI"
+- "Renewable energy breakthroughs" → "⚡ Energy"
 
-Make labels specific to the actual question content, not generic categories."""
+Keep labels extremely short - maximum 8 characters total including emoji."""
         
         completion = client.chat.completions.create(
             model="llama-3.1-8b-instant",
@@ -1155,15 +1157,18 @@ def send_onboarding_research_suggestions(update):
         keyboard = []
         user_id = update.effective_user.id
         
-        # Arrange buttons in rows of 2 for better layout
+        # Arrange buttons in rows of 3 for more compact layout
         buttons = []
         for i, (question, button_text) in enumerate(zip(research_questions, button_labels)):
             callback_data = f"onboard_{i}_{user_id}"
+            # Truncate button text if too long to ensure compact display
+            if len(button_text) > 15:
+                button_text = button_text[:12] + "..."
             buttons.append(InlineKeyboardButton(button_text, callback_data=callback_data))
         
-        # Group buttons into rows of 2
-        for i in range(0, len(buttons), 2):
-            row = buttons[i:i+2]  # Take up to 2 buttons per row
+        # Group buttons into rows of 3 for more compact display
+        for i in range(0, len(buttons), 3):
+            row = buttons[i:i+3]  # Take up to 3 buttons per row
             keyboard.append(row)
         
         reply_markup = InlineKeyboardMarkup(keyboard)
