@@ -5,7 +5,7 @@ from typing import List
 from flask import Flask, render_template, request, jsonify
 from groq import Groq
 from telegram import Update, Bot, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Dispatcher, CommandHandler, MessageHandler, Filters, CallbackQueryHandler
+from telegram.ext import Dispatcher, CommandHandler, MessageHandler, Filters
 from mcp.client.sse import sse_client
 from mcp.client.session import ClientSession
 
