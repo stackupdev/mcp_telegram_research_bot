@@ -1479,9 +1479,6 @@ def start(update, context):
         "/reset - Clear conversation history\n" +
         "/help - Show detailed help and toggle auto-research\n\n" +
         "🚀 Ready to explore? Try asking:\n" +
-        "• \"What's new in quantum computing research?\"\n" +
-        "• \"Explain recent AI safety developments\"\n" +
-        "• \"Find papers about sustainable energy\"\n" +
         "• \"What are the latest breakthroughs in cancer research?\"\n" +
         "• \"How is machine learning being used in drug discovery?\"\n" +
         "• \"Show me research on climate change mitigation\"\n" +
