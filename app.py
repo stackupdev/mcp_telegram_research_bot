@@ -1035,36 +1035,33 @@ def generate_llm_follow_up_hints(conversation_context: str, last_response: str, 
             if suggested_next_tools:
                 next_tool_suggestions = f"\nLogical next research steps: {', '.join(set(suggested_next_tools[:3]))}"
         
-        # Create an enhanced prompt that considers tool integration
-        # Focused on metadata/abstract/summary-level exploration only
-        hint_prompt = f"""Based on this research conversation response, generate 3-4 intelligent follow-up questions that seamlessly integrate with the research tools available.
+        # Create researcher-focused prompt for simple, actionable guidance
+        hint_prompt = f"""Based on this research response, generate 3-4 simple, researcher-friendly follow-up questions that work with available tools.
 
 Response that was just given:
 {last_response[:800]}...{tools_context}{next_tool_suggestions}
 
-Available research capabilities:
-- search_papers: Find new papers on any topic
-- extract_info: Get detailed info about specific papers (need ArXiv ID)
-- get_topic_papers: View previously saved papers for a topic
-- get_available_folders: See what research topics are available
-- get_research_prompt: Get structured research guidance
+Available research actions:
+🔍 Search papers - Find new papers on any topic
+📋 Get paper details - View detailed info about specific papers (need ArXiv ID)
+📚 Browse topic papers - Explore saved papers in specific areas
+📁 See topics - Discover available research collections
+🗺️ Get research guidance - Get structured research planning
 
-Generate 3-4 specific, actionable follow-up questions that would:
-1. Naturally trigger the most useful research tools
-2. Build logically on what was just discovered
-3. Help users explore broader aspects or related topics
-4. Suggest practical next steps in their research journey
+Generate 3-4 specific, practical questions that researchers would naturally ask next. Make them:
+- Clear and actionable
+- Directly connected to available tools
+- Helpful for research progression
+- Easy to understand and use
 
-Focus on questions that would benefit from:
-- Finding more papers (search_papers)
-- Getting paper details by ArXiv ID (extract_info)
-- Exploring related topics (get_topic_papers)
-- Discovering available research areas (get_available_folders)
-- Getting structured research guidance (get_research_prompt)
+Examples of good questions:
+- "Search for recent papers on [specific topic]"
+- "Get detailed info about paper [arxiv-id]"
+- "Browse papers in [specific topic] collection"
+- "Show me available research topics"
+- "Get research guidance for [specific area]"
 
-When suggesting to get details about papers, always phrase it as "Get detailed info about [specific paper]" to encourage paper selection.
-
-Format as a simple list, one question per line, without numbering or bullets. Make each question specific to the content and designed to trigger helpful tool usage."""
+Format as simple questions, one per line. Focus on practical research actions."""
         
         # Generate hints using LLM with shorter timeout
         try:
@@ -1181,12 +1178,12 @@ def send_interactive_hints(update, response: str, tools_used: list = None):
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        # Create intelligent message based on tools used
+        # Create simple researcher-friendly message
         if tools_used:
             tools_text = ", ".join(tools_used)
-            message_text = f"🧠 Based on the {tools_text} results, here are intelligent next steps:"
+            message_text = f"📊 Based on your {tools_text} results, here are your next research actions:"
         else:
-            message_text = "💡 What to explore next? Click a question below:"
+            message_text = "🔬 Research Actions: Click to explore further"
         
         # Send message with enhanced interactive buttons
         send_telegram_message(
@@ -1402,13 +1399,44 @@ def handle_hint_callback(update, context):
                 text=f"💡 {selected_question}"
             )
             
-            # Process the question with appropriate handler
+            # Process the question by creating a simulated message
             if callback_type == "hint" or callback_type == "smart_step":
-                # Use LLM handler
-                llama_command(update, context, override_message=selected_question)
+                # Create a simulated message for LLM processing
+                fake_message = type('Message', (), {})()
+                fake_message.text = selected_question
+                fake_message.from_user = update.effective_user
+                fake_message.chat = update.effective_chat
+                
+                # Create fake update and context
+                fake_update = type('Update', (), {})()
+                fake_update.effective_user = update.effective_user
+                fake_update.effective_chat = update.effective_chat
+                fake_update.message = fake_message
+                
+                fake_context = type('Context', (), {})()
+                fake_context.args = selected_question.split()
+                
+                # Process with LLama command
+                llama_command(fake_update, fake_context)
+                
             elif callback_type == "onboard":
-                # Use search handler
-                search_command(update, context, override_message=selected_question)
+                # Create a simulated message for search processing
+                fake_message = type('Message', (), {})()
+                fake_message.text = selected_question
+                fake_message.from_user = update.effective_user
+                fake_message.chat = update.effective_chat
+                
+                # Create fake update and context
+                fake_update = type('Update', (), {})()
+                fake_update.effective_user = update.effective_user
+                fake_update.effective_chat = update.effective_chat
+                fake_update.message = fake_message
+                
+                fake_context = type('Context', (), {})()
+                fake_context.args = selected_question.split()
+                
+                # Process with search command
+                search_command(fake_update, fake_context)
                 
     except (ValueError, IndexError) as e:
         logging.error(f"Error handling hint callback: {e}")
