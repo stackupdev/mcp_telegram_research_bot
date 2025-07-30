@@ -1246,13 +1246,21 @@ def handle_hint_callback(update, context):
         try:
             # Extract the index from callback data: onboard_{index}_{user_id}
             parts = callback_data.split('_')
+            print(f"DEBUG: Onboarding callback data: {callback_data}")
+            print(f"DEBUG: Callback parts: {parts}")
+            
             if len(parts) >= 2:
                 index = int(parts[1])
+                print(f"DEBUG: Extracted index: {index}")
                 
                 # Get the selected category from stored onboarding questions
                 udata = get_user_data(user_id)
+                print(f"DEBUG: User data keys: {list(udata.keys())}")
+                print(f"DEBUG: Onboarding questions: {udata.get('onboarding_questions', 'NOT FOUND')}")
+                
                 if 'onboarding_questions' in udata and index < len(udata['onboarding_questions']):
                     selected_category = udata['onboarding_questions'][index]
+                    print(f"DEBUG: Selected category: {selected_category}")
                     
                     # Send the category directly to the appropriate AI model
                     # Check which conversation mode the user is in
