@@ -1,7 +1,6 @@
 import os
 import json
 import asyncio
-import re
 from typing import List
 from flask import Flask, render_template, request, jsonify
 from groq import Groq
@@ -1143,20 +1142,18 @@ def send_onboarding_research_suggestions(update):
     """
     Send trending research topics as clickable buttons for new users.
     """
-    # Generate trending research questions
-    research_questions = generate_onboarding_research_terms()
+    # Generate trending research categories
+    research_categories = generate_onboarding_research_terms()
     
-    if research_questions:
-        # Generate button labels for the research questions
-        button_labels = generate_button_labels_from_hints(research_questions)
-        
+    if research_categories:
         # Create inline keyboard with research topic buttons
         keyboard = []
         user_id = update.effective_user.id
         
-        for i, (question, button_text) in enumerate(zip(research_questions, button_labels)):
+        for i, category in enumerate(research_categories):
             callback_data = f"onboard_{i}_{user_id}"
-            keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
+            # Use the category name directly as the button text
+            keyboard.append([InlineKeyboardButton(category, callback_data=callback_data)])
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
@@ -1167,9 +1164,9 @@ def send_onboarding_research_suggestions(update):
             reply_markup=reply_markup
         )
         
-        # Store onboarding questions in user data for callback handling
+        # Store onboarding categories in user data for callback handling
         udata = get_user_data(user_id)
-        udata['onboarding_questions'] = research_questions
+        udata['onboarding_questions'] = research_categories
 
 def handle_hint_callback(update, context):
     """
@@ -1694,17 +1691,6 @@ def llama_command(update, context):
     q = ' '.join(context.args)
     print(f"LLAMA query from user {user_id}: {q}")
     
-    # Predict which tool this question might trigger for proactive guidance
-    predicted_tool = predict_next_tool_from_question(q)
-    
-    # Enhance the question with tool context if research is enabled
-    auto_research_enabled = udata.get('auto_research', True)
-    if auto_research_enabled and predicted_tool:
-        enhanced_q = enhance_question_with_tool_context(q, predicted_tool)
-        print(f"Enhanced query with tool context: {enhanced_q}")
-        # Use enhanced question for better tool selection
-        q = enhanced_q
-    
     # Add user message to history
     udata['llama_history'].append({"role": "user", "content": q})
     
@@ -1775,17 +1761,6 @@ def deepseek_command(update, context):
         
     q = ' '.join(context.args)
     print(f"Deepseek query from user {user_id}: {q}")
-    
-    # Predict which tool this question might trigger for proactive guidance
-    predicted_tool = predict_next_tool_from_question(q)
-    
-    # Enhance the question with tool context if research is enabled
-    auto_research_enabled = udata.get('auto_research', True)
-    if auto_research_enabled and predicted_tool:
-        enhanced_q = enhance_question_with_tool_context(q, predicted_tool)
-        print(f"Enhanced query with tool context: {enhanced_q}")
-        # Use enhanced question for better tool selection
-        q = enhanced_q
     
     # Add user message to history
     udata['deepseek_history'].append({"role": "user", "content": q})
