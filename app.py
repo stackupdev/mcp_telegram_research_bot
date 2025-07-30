@@ -1065,7 +1065,71 @@ Make questions specific, actionable, and button-friendly (6-8 words max)."""
 
 def generate_onboarding_research_terms() -> list:
     """
-    Return 5 research categories for new users to explore.
+    Generate 5 random research categories for new users to explore.
+    """
+    try:
+        client = Groq()
+        
+        onboarding_prompt = """Generate exactly 5 diverse research categories that would interest curious researchers. 
+
+Choose from cutting-edge areas like:
+- Artificial Intelligence & Machine Learning
+- Biotechnology & Life Sciences
+- Quantum Computing & Physics
+- Climate Science & Sustainability
+- Space Technology & Astronomy
+- Neuroscience & Brain Research
+- Renewable Energy & Green Tech
+- Robotics & Automation
+- Materials Science & Nanotechnology
+- Cybersecurity & Digital Privacy
+- Gene Therapy & Medical Innovation
+- Virtual Reality & Metaverse
+- Blockchain & Cryptocurrency
+- Ocean Science & Marine Biology
+- Psychology & Behavioral Science
+
+Format as category names with relevant emojis, one per line:
+🤖 [Category Name]
+
+Make them diverse and engaging. Pick 5 different categories randomly."""
+        
+        completion = client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[
+                {"role": "system", "content": "You are a research curator who suggests diverse and interesting research categories. Always provide exactly 5 categories with emojis."},
+                {"role": "user", "content": onboarding_prompt}
+            ],
+            max_tokens=150,
+            temperature=0.8  # Higher temperature for more randomness
+        )
+        
+        response = completion.choices[0].message.content
+        if not response:
+            return get_fallback_categories()
+        
+        # Parse categories from response
+        categories = []
+        for line in response.strip().split('\n'):
+            line = line.strip()
+            if line and ('🤖' in line or '🧬' in line or '⚛️' in line or '🌱' in line or '🚀' in line or 
+                        '🧠' in line or '🔬' in line or '💡' in line or '🌊' in line or '🔒' in line or
+                        '🌍' in line or '🎯' in line or '💻' in line or '🔋' in line or '🎮' in line):
+                categories.append(line)
+        
+        # If we got good categories, return them
+        if len(categories) >= 3:
+            return categories[:5]  # Limit to 5 categories
+        else:
+            return get_fallback_categories()
+        
+    except Exception as e:
+        print(f"Error generating onboarding categories: {e}")
+        return get_fallback_categories()
+
+def get_fallback_categories() -> list:
+    """
+    Fallback research categories if LLM generation fails.
     """
     return [
         "🤖 Artificial Intelligence",
