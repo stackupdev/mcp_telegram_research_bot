@@ -1119,71 +1119,63 @@ Format as a simple list, one question per line, without numbering or bullets. Ma
 
 def send_interactive_hints(update, response: str, tools_used: list = None):
     """
-    Generate and send intelligent, tool-aware follow-up hints as interactive buttons.
-    Uses tool flow suggestions to provide structured research guidance.
+    Generate and send tool-centric follow-up hints as interactive buttons.
+    Directly maps to available MCP tools with clear action-oriented labels.
     """
     # Get LLM-generated hints
     hints = generate_llm_follow_up_hints("", response, tools_used)
     
-    # Get intelligent tool flow suggestions
-    tool_suggestions = get_tool_flow_suggestions(tools_used or [], response)
+    # Create tool-centric button layout
+    keyboard = []
     
-    if hints:
-        # Generate LLM-powered button labels from the hint questions
-        button_labels = generate_button_labels_from_hints(hints)
-        
-        # Create inline keyboard with LLM-generated button text
-        keyboard = []
-        for i, (hint, button_text) in enumerate(zip(hints, button_labels)):
-            callback_data = f"hint_{i}_{update.effective_user.id}"
-            keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
-        
-        # Add intelligent next-step suggestions if available
-        if tool_suggestions['immediate_next_steps']:
-            # Add a separator for next steps
-            keyboard.append([InlineKeyboardButton("——— Smart Next Steps ———", callback_data="separator")])
-            
-            # Add up to 2 immediate next step suggestions
-            for i, next_step in enumerate(tool_suggestions['immediate_next_steps'][:2]):
-                # Extract tool name and create smart button
-                if ' - ' in next_step:
-                    tool_name, description = next_step.split(' - ', 1)
-                    tool_emoji = {
-                        'extract_info': '📋',
-                        'search_papers': '🔍',
-                        'get_topic_papers': '📚',
-                        'get_available_folders': '📁',
-                        'get_research_prompt': '🗺️'
-                    }.get(tool_name, '🔧')
-                    
-                    button_text = f"{tool_emoji} {description[:35]}..."
-                    callback_data = f"smart_step_{i}_{update.effective_user.id}"
+    # Tool-to-button mapping for direct MCP tool access
+    tool_buttons = {
+        'search_papers': ['🔍 Search More Papers', '📊 Compare Results', '🎯 Deep Research'],
+        'extract_info': ['📋 Paper Details', '🔗 Open PDF', '👥 Author Work'],
+        'get_topic_papers': ['📚 Browse Topic Papers', '📊 Compare All Papers', '📅 Recent Papers'],
+        'get_available_folders': ['📁 Browse Topics', '🔍 Explore New Area', '🗂️ All Topics'],
+        'get_research_prompt': ['🎯 Create Research Plan', '🗺️ Research Roadmap', '📋 Study Guide']
+    }
+    
+    # Primary tool buttons based on what was just used
+    if tools_used:
+        for tool in tools_used:
+            if tool in tool_buttons:
+                # Add 2-3 most relevant buttons for this tool
+                for button_text in tool_buttons[tool][:2]:
+                    callback_data = f"tool_{tool}_{update.effective_user.id}"
                     keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
-        
-        # Always add an "arXiv Papers" button for direct paper search
-        arxiv_callback = f"arxiv_search_{update.effective_user.id}"
-        keyboard.append([InlineKeyboardButton("📄 arXiv Papers", callback_data=arxiv_callback)])
-        
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        # Create intelligent message based on tools used
-        if tools_used:
-            tools_text = ", ".join(tools_used)
-            message_text = f"🧠 Based on the {tools_text} results, here are intelligent next steps:"
-        else:
-            message_text = "💡 What to explore next? Click a question below:"
-        
-        # Send message with enhanced interactive buttons
-        send_telegram_message(
-            update, 
-            message_text, 
-            reply_markup=reply_markup
-        )
-        
-        # Store hints in user data for callback handling
-        user_id = update.effective_user.id
-        udata = get_user_data(user_id)
-        udata['current_hints'] = hints
+    
+    # Universal research buttons (always available)
+    universal_buttons = [
+        [InlineKeyboardButton("🔍 Search Papers", callback_data=f"search_{update.effective_user.id}")],
+        [InlineKeyboardButton("📁 Browse Topics", callback_data=f"topics_{update.effective_user.id}")],
+        [InlineKeyboardButton("🎯 Research Plan", callback_data=f"plan_{update.effective_user.id}")],
+        [InlineKeyboardButton("📄 Paper Details", callback_data=f"paper_{update.effective_user.id}")]
+    ]
+    
+    keyboard.extend(universal_buttons)
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    # Create tool-focused message
+    if tools_used:
+        tools_text = ", ".join([tool.replace('_', ' ').title() for tool in tools_used])
+        message_text = f"🛠️ Based on {tools_text}, here are your next research tools:"
+    else:
+        message_text = "🔧 Choose your next research action:"
+    
+    # Send message with tool-centric buttons
+    send_telegram_message(
+        update, 
+        message_text, 
+        reply_markup=reply_markup
+    )
+    
+    # Store hints for callback handling
+    user_id = update.effective_user.id
+    udata = get_user_data(user_id)
+    udata['current_hints'] = hints
 
 def generate_button_labels_from_hints(hints: list) -> list:
     """
