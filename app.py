@@ -1065,41 +1065,53 @@ Make questions specific, actionable, and button-friendly (6-8 words max)."""
 def generate_onboarding_research_terms() -> list:
     """
     Generate 5 random research categories for new users to explore.
+    Each category will be exactly two words with an emoji.
     """
     try:
         client = Groq()
         
-        onboarding_prompt = """Generate exactly 5 diverse research categories that would interest curious researchers. 
+        onboarding_prompt = """Generate exactly 5 diverse research categories for curious researchers. 
 
-Choose from cutting-edge areas like:
-- Artificial Intelligence & Machine Learning
-- Biotechnology & Life Sciences
-- Quantum Computing & Physics
-- Climate Science & Sustainability
-- Space Technology & Astronomy
-- Neuroscience & Brain Research
-- Renewable Energy & Green Tech
-- Robotics & Automation
-- Materials Science & Nanotechnology
-- Cybersecurity & Digital Privacy
-- Gene Therapy & Medical Innovation
-- Virtual Reality & Metaverse
-- Blockchain & Cryptocurrency
-- Ocean Science & Marine Biology
-- Psychology & Behavioral Science
+Each category must follow this EXACT format:
+[emoji] [Word1] [Word2]
 
-Format as category names with relevant emojis, one per line:
-🤖 [Category Name]
+Examples:
+🤖 Artificial Intelligence
+🧬 Gene Therapy
+⚛️ Quantum Computing
+🌱 Climate Science
+🚀 Space Technology
 
-Make them diverse and engaging. Pick 5 different categories randomly."""
+Choose from these areas (pick 5 randomly):
+- Artificial Intelligence
+- Gene Therapy
+- Quantum Computing
+- Climate Science
+- Space Technology
+- Brain Research
+- Renewable Energy
+- Robotics Engineering
+- Materials Science
+- Digital Privacy
+- Medical Innovation
+- Virtual Reality
+- Blockchain Technology
+- Ocean Science
+- Behavioral Psychology
+
+IMPORTANT: 
+- Use EXACTLY two words after the emoji
+- NO asterisks (**) or other formatting
+- One category per line
+- Pick 5 different categories"""
         
         completion = client.chat.completions.create(
             model="llama-3.1-8b-instant",
             messages=[
-                {"role": "system", "content": "You are a research curator who suggests diverse and interesting research categories. Always provide exactly 5 categories with emojis."},
+                {"role": "system", "content": "You are a research curator. Always provide exactly 5 categories in the format: [emoji] [Word1] [Word2]. No extra formatting."},
                 {"role": "user", "content": onboarding_prompt}
             ],
-            max_tokens=150,
+            max_tokens=100,
             temperature=0.8  # Higher temperature for more randomness
         )
         
@@ -1107,14 +1119,21 @@ Make them diverse and engaging. Pick 5 different categories randomly."""
         if not response:
             return get_fallback_categories()
         
-        # Parse categories from response
+        # Parse and clean categories from response
         categories = []
         for line in response.strip().split('\n'):
             line = line.strip()
-            if line and ('🤖' in line or '🧬' in line or '⚛️' in line or '🌱' in line or '🚀' in line or 
-                        '🧠' in line or '🔬' in line or '💡' in line or '🌊' in line or '🔒' in line or
-                        '🌍' in line or '🎯' in line or '💻' in line or '🔋' in line or '🎮' in line):
-                categories.append(line)
+            # Remove any ** formatting and extra whitespace
+            line = line.replace('**', '').strip()
+            
+            # Check if line has an emoji and exactly two words after it
+            if line and any(emoji in line for emoji in ['🤖', '🧬', '⚛️', '🌱', '🚀', '🧠', '🔬', '💡', '🌊', '🔒', '🌍', '🎯', '💻', '🔋', '🎮']):
+                # Split by space and ensure we have emoji + exactly 2 words
+                parts = line.split()
+                if len(parts) == 3:  # emoji + 2 words
+                    categories.append(line)
+                elif len(parts) > 3:  # emoji + more than 2 words, truncate to 2
+                    categories.append(f"{parts[0]} {parts[1]} {parts[2]}")
         
         # If we got good categories, return them
         if len(categories) >= 3:
@@ -1129,12 +1148,13 @@ Make them diverse and engaging. Pick 5 different categories randomly."""
 def get_fallback_categories() -> list:
     """
     Fallback research categories if LLM generation fails.
+    Each category follows the format: [emoji] [Word1] [Word2]
     """
     return [
         "🤖 Artificial Intelligence",
-        "🧬 Biotechnology", 
+        "🧬 Gene Therapy", 
         "⚛️ Quantum Computing",
-        "🌱 Climate & Sustainability",
+        "🌱 Climate Science",
         "🚀 Space Technology"
     ]
 
@@ -1218,7 +1238,7 @@ def handle_hint_callback(update, context):
                         mode = udata.get('conversation_mode', 'none')
                         
                         if mode == 'llama':
-                            # Create a fake update object for llama_command
+                            # Create a fake update and context with the category as arguments
                             fake_update = type('obj', (object,), {
                                 'effective_user': update.effective_user,
                                 'message': type('obj', (object,), {
@@ -1226,10 +1246,17 @@ def handle_hint_callback(update, context):
                                     'reply_text': query.message.reply_text
                                 })()
                             })()
-                            llama_command(fake_update, context)
+                            
+                            # Create fake context with the category as args
+                            fake_context = type('obj', (object,), {
+                                'args': selected_category.split(),  # Split category into words as args
+                                'bot': context.bot if hasattr(context, 'bot') else None
+                            })()
+                            
+                            llama_command(fake_update, fake_context)
                             
                         elif mode == 'deepseek':
-                            # Create a fake update object for deepseek_command
+                            # Create a fake update and context with the category as arguments
                             fake_update = type('obj', (object,), {
                                 'effective_user': update.effective_user,
                                 'message': type('obj', (object,), {
@@ -1237,7 +1264,14 @@ def handle_hint_callback(update, context):
                                     'reply_text': query.message.reply_text
                                 })()
                             })()
-                            deepseek_command(fake_update, context)
+                            
+                            # Create fake context with the category as args
+                            fake_context = type('obj', (object,), {
+                                'args': selected_category.split(),  # Split category into words as args
+                                'bot': context.bot if hasattr(context, 'bot') else None
+                            })()
+                            
+                            deepseek_command(fake_update, fake_context)
                         else:
                             query.message.reply_text("Please select an AI model first using /llama or /deepseek")
                     else:
