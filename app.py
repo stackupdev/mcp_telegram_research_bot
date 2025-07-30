@@ -1034,6 +1034,7 @@ def generate_llm_follow_up_hints(conversation_context: str, last_response: str, 
                 next_tool_suggestions = f"\nLogical next research steps: {', '.join(set(suggested_next_tools[:3]))}"
         
         # Create an enhanced prompt that considers tool integration
+        # Focused on metadata/abstract/summary-level exploration only
         hint_prompt = f"""Based on this research conversation response, generate 3-4 intelligent follow-up questions that seamlessly integrate with the research tools available.
 
 Response that was just given:
@@ -1049,16 +1050,15 @@ Available research capabilities:
 Generate 3-4 specific, actionable follow-up questions that would:
 1. Naturally trigger the most useful research tools
 2. Build logically on what was just discovered
-3. Help users explore deeper or broader aspects
+3. Help users explore broader aspects or related topics
 4. Suggest practical next steps in their research journey
 
 Focus on questions that would benefit from:
 - Finding more papers (search_papers)
-- Getting paper details for in-depth analysis (extract_info with specific paper IDs)
+- Getting paper details by ArXiv ID (extract_info)
 - Exploring related topics (get_topic_papers)
-- Comparing approaches or methodologies across specific papers
-- Understanding practical applications of research findings
-- Identifying research trends or gaps in the literature
+- Discovering available research areas (get_available_folders)
+- Getting structured research guidance (get_research_prompt)
 
 When suggesting to get details about papers, always phrase it as "Get detailed info about [specific paper]" to encourage paper selection.
 
@@ -1725,7 +1725,7 @@ def start(update, context):
         "I can chat naturally AND automatically search thousands of academic papers from ArXiv when you need research insights. No more switching between tools!\n\n" +
         "🤖 Two brilliant AI assistants available:\n" +
         "• LLAMA - Great for general research and explanations\n" +
-        "• Deepseek - Excellent for deep technical analysis\n\n" +
+        "• Deepseek - Excellent for detailed research exploration\n\n" +
         "💬 Smart Chat Commands:\n" +
         "/llama <question> - Chat with LLAMA AI\n" +
         "/deepseek <question> - Chat with Deepseek AI\n" +
@@ -1933,7 +1933,7 @@ def llama_command(update, context):
     
     # Determine the appropriate system message based on research mode
     if auto_research_enabled:
-        system_content = "You are a helpful research assistant with access to ArXiv academic papers. When users ask about research topics, recent papers, or want to find academic information, automatically use the available tools to search for and retrieve relevant papers. Integrate the research results naturally into your responses. Be conversational and helpful. IMPORTANT: Always preserve and clearly display PDF URLs when providing paper information. Format URLs as clickable links when possible."
+        system_content = "You are a helpful research assistant with access to ArXiv academic papers. When users ask about research topics, recent papers, or want to find academic information, automatically use the available tools to search for and retrieve relevant papers. Focus on metadata, abstracts, and summaries for paper exploration. Integrate the research results naturally into your responses. Be conversational and helpful. IMPORTANT: Always preserve and clearly display PDF URLs when providing paper information. Format URLs as clickable links when possible. Guide users to select specific papers by ID for detailed exploration."
     else:
         system_content = "You are a helpful, friendly AI assistant. Engage in natural conversation and provide helpful responses on a wide variety of topics. Be conversational, informative, and engaging. Do not mention research papers, academic sources, or offer to search for papers."
     
@@ -2015,7 +2015,7 @@ def deepseek_command(update, context):
     
     # Determine the appropriate system message based on research mode
     if auto_research_enabled:
-        system_content = "You are a helpful research assistant with access to ArXiv academic papers. When users ask about research topics, recent papers, or want to find academic information, automatically use the available tools to search for and retrieve relevant papers. Integrate the research results naturally into your responses. Be conversational and helpful. IMPORTANT: Always preserve and clearly display PDF URLs when providing paper information. Format URLs as clickable links when possible."
+        system_content = "You are a helpful research assistant with access to ArXiv academic papers. When users ask about research topics, recent papers, or want to find academic information, automatically use the available tools to search for and retrieve relevant papers. Focus on metadata, abstracts, and summaries for paper exploration. Integrate the research results naturally into your responses. Be conversational and helpful. IMPORTANT: Always preserve and clearly display PDF URLs when providing paper information. Format URLs as clickable links when possible. Guide users to select specific papers by ID for detailed exploration."
     else:
         system_content = "You are a helpful, friendly AI assistant. Engage in natural conversation and provide helpful responses on a wide variety of topics. Be conversational, informative, and engaging. Do not mention research papers, academic sources, or offer to search for papers."
     

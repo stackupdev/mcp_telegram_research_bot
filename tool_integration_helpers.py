@@ -14,37 +14,38 @@ def get_tool_flow_suggestions(tools_used: list, response_content: str) -> dict:
     }
     
     # Tool flow logic based on what was just executed
+    # Focused on metadata/abstract/summary-level exploration only
     tool_flows = {
         'search_papers': {
             'immediate': [
                 'extract_info - Select a paper by ID for detailed information',
                 'search_papers - Search related or narrower topics',
-                'get_research_prompt - Get structured analysis guidance'
+                'get_research_prompt - Get structured research guidance'
             ],
             'exploration': [
                 'get_topic_papers - See if there are saved papers in this area',
                 'get_available_folders - Explore what other topics are available'
             ],
             'deep_dive': [
-                'Compare methodologies across specific papers by ID',
-                'Analyze trends and developments over time',
-                'Identify research gaps and future directions'
+                'extract_info - Get detailed info for specific papers',
+                'search_papers - Find more papers on related topics',
+                'get_topic_papers - Explore saved papers in depth'
             ]
         },
         'extract_info': {
             'immediate': [
                 'search_papers - Find similar or citing papers',
                 'get_topic_papers - Explore more papers in this topic area',
-                'get_research_prompt - Get guidance for deeper analysis'
+                'get_research_prompt - Get structured research guidance'
             ],
             'exploration': [
                 'search_papers - Look for papers by the same authors',
-                'search_papers - Find papers using similar methodologies'
+                'get_available_folders - Explore other research areas'
             ],
             'deep_dive': [
-                'Analyze the methodology in detail',
-                'Compare with alternative approaches',
-                'Explore practical applications and limitations'
+                'extract_info - Get details for related papers',
+                'search_papers - Find papers with similar abstracts',
+                'get_topic_papers - Explore topic paper collections'
             ]
         },
         'get_topic_papers': {
@@ -58,9 +59,9 @@ def get_tool_flow_suggestions(tools_used: list, response_content: str) -> dict:
                 'search_papers - Explore related research areas'
             ],
             'deep_dive': [
-                'Compare evolution of research over time',
-                'Identify most influential papers in the collection',
-                'Analyze research methodology trends'
+                'extract_info - Get detailed info for topic papers',
+                'search_papers - Find more papers in this research area',
+                'get_research_prompt - Get topic-specific guidance'
             ]
         },
         'get_available_folders': {
@@ -70,13 +71,13 @@ def get_tool_flow_suggestions(tools_used: list, response_content: str) -> dict:
                 'get_research_prompt - Get research planning guidance'
             ],
             'exploration': [
-                'Compare research volume across different topics',
-                'Identify interdisciplinary research opportunities'
+                'get_topic_papers - Compare paper counts across topics',
+                'search_papers - Explore interdisciplinary areas'
             ],
             'deep_dive': [
-                'Analyze research landscape and trends',
-                'Identify emerging vs established research areas',
-                'Plan comprehensive multi-topic research strategy'
+                'get_topic_papers - Explore topic paper collections',
+                'search_papers - Find papers across multiple topics',
+                'get_research_prompt - Get multi-topic research guidance'
             ]
         },
         'get_research_prompt': {
@@ -86,13 +87,13 @@ def get_tool_flow_suggestions(tools_used: list, response_content: str) -> dict:
                 'get_topic_papers - Explore existing collections'
             ],
             'exploration': [
-                'Follow the structured research guidance provided',
-                'Adapt the research plan to specific interests'
+                'search_papers - Follow research guidance with searches',
+                'extract_info - Get details on suggested papers'
             ],
             'deep_dive': [
-                'Implement comprehensive research methodology',
-                'Plan systematic literature review',
-                'Design comparative analysis framework'
+                'search_papers - Execute detailed research steps',
+                'get_topic_papers - Explore guided topic collections',
+                'extract_info - Get detailed info on key papers'
             ]
         }
     }
@@ -113,6 +114,7 @@ def get_tool_flow_suggestions(tools_used: list, response_content: str) -> dict:
 def generate_tool_aware_fallback_questions(tools_used: list) -> list:
     """
     Generate fallback questions that are aware of which tools were just used
+    Focused on metadata/abstract/summary-level exploration only
     """
     if not tools_used:
         return [
@@ -125,22 +127,22 @@ def generate_tool_aware_fallback_questions(tools_used: list) -> list:
         'search_papers': [
             "📋 Select a paper by ID for detailed information?",
             "🔍 Search for related research areas?",
-            "🗺️ Need guidance for deeper analysis?"
+            "🗺️ Get structured research guidance?"
         ],
         'extract_info': [
             "🔍 Find similar or related papers?",
             "📚 Explore more papers in this topic?",
-            "⚖️ Compare with other approaches?"
+            "📋 Get details for another paper?"
         ],
         'get_topic_papers': [
             "📋 Select a paper by ID for detailed information?",
             "🔍 Search for newer research?",
-            "🔬 Analyze research methodologies?"
+            "📚 Explore another topic area?"
         ],
         'get_available_folders': [
             "📚 Explore papers in specific topics?",
             "🔍 Search interesting research areas?",
-            "🗺️ Plan comprehensive research strategy?"
+            "🗺️ Get research planning guidance?"
         ],
         'get_research_prompt': [
             "🔍 Execute the research plan?",
