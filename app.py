@@ -2,6 +2,8 @@ import os
 import json
 import asyncio
 import re
+import threading
+import logging
 from typing import List
 from flask import Flask, render_template, request, jsonify
 from groq import Groq
@@ -1064,16 +1066,21 @@ When suggesting to get details about papers, always phrase it as "Get detailed i
 
 Format as a simple list, one question per line, without numbering or bullets. Make each question specific to the content and designed to trigger helpful tool usage."""
         
-        # Generate hints using LLM
-        completion = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=[
-                {"role": "system", "content": "You are a research assistant that generates intelligent follow-up questions to help users explore topics deeper. Generate specific, actionable questions that would naturally continue the research conversation."},
-                {"role": "user", "content": hint_prompt}
-            ],
-            max_tokens=200,
-            temperature=0.5
-        )
+        # Generate hints using LLM with shorter timeout
+        try:
+            completion = client.chat.completions.create(
+                model="llama-3.1-8b-instant",
+                messages=[
+                    {"role": "system", "content": "You are a research assistant that generates intelligent follow-up questions to help users explore topics deeper. Generate specific, actionable questions that would naturally continue the research conversation."},
+                    {"role": "user", "content": hint_prompt}
+                ],
+                max_tokens=150,
+                temperature=0.5,
+                timeout=5.0  # 5 second timeout
+            )
+        except Exception as e:
+            logging.warning(f"LLM hint generation failed: {e}")
+            return []
         
         response = completion.choices[0].message.content
         if not response:
@@ -1349,128 +1356,64 @@ def handle_hint_callback(update, context):
     Sends the question and triggers a bot response with enhanced tool context.
     """
     query = update.callback_query
-    query.answer()  # Acknowledge the callback
     
-    # Parse callback data: hint_{index}_{user_id}, onboard_{index}_{user_id}, smart_step_{index}_{user_id}
-    callback_data = query.data
-    
-    # Handle separator buttons (do nothing)
-    if callback_data == "separator":
+    # Immediate acknowledgment to prevent timeout
+    try:
+        query.answer()
+    except Exception as e:
+        logging.warning(f"Callback query answer failed: {e}")
         return
     
-    if callback_data.startswith('arxiv_search_'):
-        # Handle arXiv Papers button click
-        user_id = int(callback_data.split('_')[2])
+    # Handle separator buttons (do nothing)
+    if query.data == "separator":
+        return
+    
+    try:
+        # Parse callback data: hint_{index}_{user_id}, onboard_{index}_{user_id}, smart_step_{index}_{user_id}
+        callback_data = query.data
         
-        # Send a prompt asking what to search for
-        query.message.reply_text("📄 What research topic would you like to search for on arXiv?\n\nJust type your topic and I'll find the latest papers for you!")
-        
-    elif callback_data.startswith('smart_step_'):
-        # Handle smart next step suggestions
+        # Extract parts
         parts = callback_data.split('_')
-        if len(parts) >= 3:
-            step_index = int(parts[2])
-            user_id = int(parts[3])
+        if len(parts) < 3:
+            return
             
-            # Get user's stored tool suggestions
-            udata = get_user_data(user_id)
-            tool_suggestions = udata.get('tool_suggestions', {})
-            
-            if 'immediate_next_steps' in tool_suggestions and step_index < len(tool_suggestions['immediate_next_steps']):
-                next_step = tool_suggestions['immediate_next_steps'][step_index]
-                
-                # Extract tool name and description
-                if ' - ' in next_step:
-                    tool_name, description = next_step.split(' - ', 1)
-                    
-                    # Create an intelligent question that will trigger the right tool
-                    tool_questions = {
-                        'extract_info': "Can you get detailed information about a specific paper by its ID?",
-                        'search_papers': f"Search for more papers related to this topic",
-                        'get_topic_papers': "Show me papers that have been saved in this research area",
-                        'get_available_folders': "What other research topics are available to explore?",
-                        'get_research_prompt': "Give me structured research guidance for this topic"
-                    }
-                    
-                    smart_question = tool_questions.get(tool_name, description)
-                    
-                    # Enhance the question with tool context for better LLM tool selection
-                    enhanced_question = enhance_question_with_tool_context(smart_question, tool_name)
-                    
-                    # Send the enhanced question
-                    query.message.reply_text(f"🧠 Smart suggestion: {enhanced_question}")
-                    
-                    # Create enhanced context for processing
-                    fake_context = type('Context', (), {})() 
-                    fake_context.args = enhanced_question.split()
-                    
-                    # Create a new update object
-                    fake_update = type('Update', (), {})()  
-                    fake_update.effective_user = query.from_user
-                    fake_update.effective_chat = query.message.chat
-                    fake_update.message = query.message
-                    
-                    # Use last model or default to llama
-                    last_model = udata.get('last_model', 'llama')
-                    
-                    if last_model == 'deepseek':
-                        deepseek_command(fake_update, fake_context)
-                    else:
-                        llama_command(fake_update, fake_context)
+        callback_type = parts[0]
+        question_index = int(parts[1])
+        user_id = int(parts[2])
         
-    elif callback_data.startswith('hint_') or callback_data.startswith('onboard_'):
-        parts = callback_data.split('_')
-        if len(parts) >= 3:
-            hint_index = int(parts[1])
-            user_id = int(parts[2])
+        # Get user data
+        udata = get_user_data(user_id)
+        questions = []
+        
+        # Determine which questions to use
+        if callback_type == "hint":
+            questions = udata.get('follow_up_questions', [])
+        elif callback_type == "onboard":
+            questions = udata.get('onboarding_questions', [])
+        elif callback_type == "smart_step":
+            questions = udata.get('smart_steps', [])
+        
+        if question_index < len(questions):
+            selected_question = questions[question_index]
             
-            # Get user's stored hints or onboarding questions
-            udata = get_user_data(user_id)
+            # Send the question as if user typed it
+            context.bot.send_message(
+                chat_id=query.message.chat_id,
+                text=f"💡 {selected_question}"
+            )
             
-            if callback_data.startswith('onboard_'):
-                # Handle onboarding research topic selection
-                questions = udata.get('onboarding_questions', [])
-            else:
-                # Handle regular conversation hints
-                questions = udata.get('current_hints', [])
-            
-            if hint_index < len(questions):
-                question = questions[hint_index]
+            # Process the question with appropriate handler
+            if callback_type == "hint" or callback_type == "smart_step":
+                # Use LLM handler
+                llama_command(update, context, override_message=selected_question)
+            elif callback_type == "onboard":
+                # Use search handler
+                search_command(update, context, override_message=selected_question)
                 
-                # Remove emoji prefix from the question for cleaner display
-                clean_question = question.split(' ', 1)[1] if ' ' in question else question
-                
-                # Predict which tool this question will likely trigger
-                predicted_tool = predict_next_tool_from_question(clean_question)
-                
-                # Enhance the question with tool context for better LLM tool selection
-                enhanced_question = enhance_question_with_tool_context(clean_question, predicted_tool)
-                
-                # Send the enhanced question as if the user asked it
-                query.message.reply_text(f"💬 {enhanced_question}")
-                
-                # Create a fake context with the enhanced question as args
-                fake_context = type('Context', (), {})() 
-                fake_context.args = enhanced_question.split()
-                
-                # Create a new update object for the question
-                fake_update = type('Update', (), {})()  
-                fake_update.effective_user = query.from_user
-                fake_update.effective_chat = query.message.chat
-                fake_update.message = query.message
-                
-                # For onboarding, default to llama; for hints, use last model
-                if callback_data.startswith('onboard_'):
-                    last_model = 'llama'  # Default for new users
-                else:
-                    last_model = udata.get('last_model', 'llama')
-                
-                if last_model == 'deepseek':
-                    # Process as deepseek command
-                    deepseek_command(fake_update, fake_context)
-                else:
-                    # Process as llama command (default)
-                    llama_command(fake_update, fake_context)
+    except (ValueError, IndexError) as e:
+        logging.error(f"Error handling hint callback: {e}")
+    except Exception as e:
+        logging.error(f"Unexpected error in handle_hint_callback: {e}")
 
 def get_deepseek_reply(messages: list, enable_tools: bool = True, update=None) -> str:
     """
