@@ -998,7 +998,7 @@ def generate_llm_follow_up_hints(conversation_context: str, last_response: str, 
             # Map tools to logical next steps
             tool_flow_map = {
                 'search_papers': [
-                    'extract_info (get details about specific papers)',
+                    'extract_info (get detailed info about specific papers by ID)',
                     'get_topic_papers (explore saved papers in this area)',
                     'search_papers (search related topics)'
                 ],
@@ -1008,7 +1008,7 @@ def generate_llm_follow_up_hints(conversation_context: str, last_response: str, 
                     'get_topic_papers (explore more papers in this topic)'
                 ],
                 'get_topic_papers': [
-                    'extract_info (get details about specific papers)',
+                    'extract_info (get detailed info about specific papers by ID)',
                     'search_papers (find newer papers in this area)',
                     'get_research_prompt (get comprehensive research guidance)'
                 ],
@@ -1054,11 +1054,13 @@ Generate 3-4 specific, actionable follow-up questions that would:
 
 Focus on questions that would benefit from:
 - Finding more papers (search_papers)
-- Getting paper details (extract_info)
+- Getting paper details for in-depth analysis (extract_info with specific paper IDs)
 - Exploring related topics (get_topic_papers)
-- Comparing approaches or methodologies
-- Understanding practical applications
-- Identifying research trends or gaps
+- Comparing approaches or methodologies across specific papers
+- Understanding practical applications of research findings
+- Identifying research trends or gaps in the literature
+
+When suggesting to get details about papers, always phrase it as "Get detailed info about [specific paper]" to encourage paper selection.
 
 Format as a simple list, one question per line, without numbering or bullets. Make each question specific to the content and designed to trigger helpful tool usage."""
         
@@ -1143,8 +1145,8 @@ def send_interactive_hints(update, response: str, tools_used: list = None):
             # Add a separator for next steps
             keyboard.append([InlineKeyboardButton("——— Smart Next Steps ———", callback_data="separator")])
             
-            # Add up to 2 immediate next step suggestions
-            for i, next_step in enumerate(tool_suggestions['immediate_next_steps'][:2]):
+            # Add up to 4 immediate next step suggestions with emphasis on paper selection
+            for i, next_step in enumerate(tool_suggestions['immediate_next_steps'][:4]):
                 # Extract tool name and create smart button
                 if ' - ' in next_step:
                     tool_name, description = next_step.split(' - ', 1)
@@ -1156,7 +1158,13 @@ def send_interactive_hints(update, response: str, tools_used: list = None):
                         'get_research_prompt': '🗺️'
                     }.get(tool_name, '🔧')
                     
-                    button_text = f"{tool_emoji} {description[:35]}..."
+                    # Enhance paper selection suggestions
+                    if tool_name == 'extract_info' and ('specific' in description.lower() or 'select' in description.lower() or 'paper' in description.lower()):
+                        button_text = f"{tool_emoji} Select paper by ID..."
+                    elif tool_name == 'extract_info':
+                        button_text = f"{tool_emoji} Get paper details..."
+                    else:
+                        button_text = f"{tool_emoji} {description[:35]}..."
                     callback_data = f"smart_step_{i}_{update.effective_user.id}"
                     keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
         
@@ -1377,7 +1385,7 @@ def handle_hint_callback(update, context):
                     
                     # Create an intelligent question that will trigger the right tool
                     tool_questions = {
-                        'extract_info': "Can you get detailed information about the most relevant paper from the results?",
+                        'extract_info': "Can you get detailed information about a specific paper by its ID?",
                         'search_papers': f"Search for more papers related to this topic",
                         'get_topic_papers': "Show me papers that have been saved in this research area",
                         'get_available_folders': "What other research topics are available to explore?",
@@ -1842,11 +1850,13 @@ def paper_command(update, context):
         if "error" in info:
             send_telegram_message(update, f"Error: {info['error']}")
             return
-        msg = f"Paper Info for {paper_id}:\n"
-        msg += f"Title: {info.get('title', 'N/A')}\n"
-        msg += f"Authors: {', '.join(info.get('authors', []))}\n"
-        msg += f"Abstract: {info.get('summary', 'N/A')}\n"
-        msg += f"URL: {info.get('pdf_url', 'N/A')}\n"
+        # Format paper information with better structure and emphasis on URL
+        msg = f"📄 **Paper Details for {paper_id}**\n\n"
+        msg += f"**Title:** {info.get('title', 'N/A')}\n\n"
+        msg += f"**Authors:** {', '.join(info.get('authors', []))}\n\n"
+        msg += f"**Published:** {info.get('published', 'N/A')}\n\n"
+        msg += f"**🔗 PDF URL:** {info.get('pdf_url', 'N/A')}\n\n"
+        msg += f"**Abstract:**\n{info.get('summary', 'N/A')}\n"
         send_telegram_message(update, msg)
     except Exception as e:
         send_telegram_message(update, f"Error retrieving paper info: {e}")
@@ -1923,7 +1933,7 @@ def llama_command(update, context):
     
     # Determine the appropriate system message based on research mode
     if auto_research_enabled:
-        system_content = "You are a helpful research assistant with access to ArXiv academic papers. When users ask about research topics, recent papers, or want to find academic information, automatically use the available tools to search for and retrieve relevant papers. Integrate the research results naturally into your responses. Be conversational and helpful."
+        system_content = "You are a helpful research assistant with access to ArXiv academic papers. When users ask about research topics, recent papers, or want to find academic information, automatically use the available tools to search for and retrieve relevant papers. Integrate the research results naturally into your responses. Be conversational and helpful. IMPORTANT: Always preserve and clearly display PDF URLs when providing paper information. Format URLs as clickable links when possible."
     else:
         system_content = "You are a helpful, friendly AI assistant. Engage in natural conversation and provide helpful responses on a wide variety of topics. Be conversational, informative, and engaging. Do not mention research papers, academic sources, or offer to search for papers."
     
@@ -2005,7 +2015,7 @@ def deepseek_command(update, context):
     
     # Determine the appropriate system message based on research mode
     if auto_research_enabled:
-        system_content = "You are a helpful research assistant with access to ArXiv academic papers. When users ask about research topics, recent papers, or want to find academic information, automatically use the available tools to search for and retrieve relevant papers. Integrate the research results naturally into your responses. Be conversational and helpful."
+        system_content = "You are a helpful research assistant with access to ArXiv academic papers. When users ask about research topics, recent papers, or want to find academic information, automatically use the available tools to search for and retrieve relevant papers. Integrate the research results naturally into your responses. Be conversational and helpful. IMPORTANT: Always preserve and clearly display PDF URLs when providing paper information. Format URLs as clickable links when possible."
     else:
         system_content = "You are a helpful, friendly AI assistant. Engage in natural conversation and provide helpful responses on a wide variety of topics. Be conversational, informative, and engaging. Do not mention research papers, academic sources, or offer to search for papers."
     

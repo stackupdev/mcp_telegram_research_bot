@@ -17,7 +17,7 @@ def get_tool_flow_suggestions(tools_used: list, response_content: str) -> dict:
     tool_flows = {
         'search_papers': {
             'immediate': [
-                'extract_info - Get details about specific papers found',
+                'extract_info - Select a paper by ID for detailed information',
                 'search_papers - Search related or narrower topics',
                 'get_research_prompt - Get structured analysis guidance'
             ],
@@ -26,7 +26,7 @@ def get_tool_flow_suggestions(tools_used: list, response_content: str) -> dict:
                 'get_available_folders - Explore what other topics are available'
             ],
             'deep_dive': [
-                'Compare methodologies across the papers found',
+                'Compare methodologies across specific papers by ID',
                 'Analyze trends and developments over time',
                 'Identify research gaps and future directions'
             ]
@@ -49,7 +49,7 @@ def get_tool_flow_suggestions(tools_used: list, response_content: str) -> dict:
         },
         'get_topic_papers': {
             'immediate': [
-                'extract_info - Get details about specific papers',
+                'extract_info - Select a paper by ID for detailed information',
                 'search_papers - Find newer papers in this topic',
                 'get_research_prompt - Get comprehensive research guidance'
             ],
@@ -123,7 +123,7 @@ def generate_tool_aware_fallback_questions(tools_used: list) -> list:
     
     fallback_map = {
         'search_papers': [
-            "📋 Get details about any specific paper?",
+            "📋 Select a paper by ID for detailed information?",
             "🔍 Search for related research areas?",
             "🗺️ Need guidance for deeper analysis?"
         ],
@@ -133,7 +133,7 @@ def generate_tool_aware_fallback_questions(tools_used: list) -> list:
             "⚖️ Compare with other approaches?"
         ],
         'get_topic_papers': [
-            "📋 Get details about specific papers?",
+            "📋 Select a paper by ID for detailed information?",
             "🔍 Search for newer research?",
             "🔬 Analyze research methodologies?"
         ],
@@ -210,7 +210,7 @@ def enhance_question_with_tool_context(question: str, predicted_tool: str) -> st
     """
     tool_context_hints = {
         'search_papers': "Find research papers about: ",
-        'extract_info': "Get detailed information about paper: ",
+        'extract_info': "Get detailed information about paper with ArXiv ID: ",
         'get_topic_papers': "Show me saved papers on topic: ",
         'get_available_folders': "What research topics are available? ",
         'get_research_prompt': "Give me research guidance for: "
