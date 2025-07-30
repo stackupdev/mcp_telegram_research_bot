@@ -2,8 +2,6 @@ import os
 import json
 import asyncio
 import re
-import threading
-import logging
 from typing import List
 from flask import Flask, render_template, request, jsonify
 from groq import Groq
@@ -1000,7 +998,7 @@ def generate_llm_follow_up_hints(conversation_context: str, last_response: str, 
             # Map tools to logical next steps
             tool_flow_map = {
                 'search_papers': [
-                    'extract_info (get detailed info about specific papers by ID)',
+                    'extract_info (get details about specific papers)',
                     'get_topic_papers (explore saved papers in this area)',
                     'search_papers (search related topics)'
                 ],
@@ -1010,7 +1008,7 @@ def generate_llm_follow_up_hints(conversation_context: str, last_response: str, 
                     'get_topic_papers (explore more papers in this topic)'
                 ],
                 'get_topic_papers': [
-                    'extract_info (get detailed info about specific papers by ID)',
+                    'extract_info (get details about specific papers)',
                     'search_papers (find newer papers in this area)',
                     'get_research_prompt (get comprehensive research guidance)'
                 ],
@@ -1035,49 +1033,45 @@ def generate_llm_follow_up_hints(conversation_context: str, last_response: str, 
             if suggested_next_tools:
                 next_tool_suggestions = f"\nLogical next research steps: {', '.join(set(suggested_next_tools[:3]))}"
         
-        # Create researcher-focused prompt for simple, actionable guidance
-        hint_prompt = f"""Based on this research response, generate 3-4 simple, researcher-friendly follow-up questions that work with available tools.
+        # Create an enhanced prompt that considers tool integration
+        hint_prompt = f"""Based on this research conversation response, generate 3-4 intelligent follow-up questions that seamlessly integrate with the research tools available.
 
 Response that was just given:
 {last_response[:800]}...{tools_context}{next_tool_suggestions}
 
-Available research actions:
-🔍 Search papers - Find new papers on any topic
-📋 Get paper details - View detailed info about specific papers (need ArXiv ID)
-📚 Browse topic papers - Explore saved papers in specific areas
-📁 See topics - Discover available research collections
-🗺️ Get research guidance - Get structured research planning
+Available research capabilities:
+- search_papers: Find new papers on any topic
+- extract_info: Get detailed info about specific papers (need ArXiv ID)
+- get_topic_papers: View previously saved papers for a topic
+- get_available_folders: See what research topics are available
+- get_research_prompt: Get structured research guidance
 
-Generate 3-4 specific, practical questions that researchers would naturally ask next. Make them:
-- Clear and actionable
-- Directly connected to available tools
-- Helpful for research progression
-- Easy to understand and use
+Generate 3-4 specific, actionable follow-up questions that would:
+1. Naturally trigger the most useful research tools
+2. Build logically on what was just discovered
+3. Help users explore deeper or broader aspects
+4. Suggest practical next steps in their research journey
 
-Examples of good questions:
-- "Search for recent papers on [specific topic]"
-- "Get detailed info about paper [arxiv-id]"
-- "Browse papers in [specific topic] collection"
-- "Show me available research topics"
-- "Get research guidance for [specific area]"
+Focus on questions that would benefit from:
+- Finding more papers (search_papers)
+- Getting paper details (extract_info)
+- Exploring related topics (get_topic_papers)
+- Comparing approaches or methodologies
+- Understanding practical applications
+- Identifying research trends or gaps
 
-Format as simple questions, one per line. Focus on practical research actions."""
+Format as a simple list, one question per line, without numbering or bullets. Make each question specific to the content and designed to trigger helpful tool usage."""
         
-        # Generate hints using LLM with shorter timeout
-        try:
-            completion = client.chat.completions.create(
-                model="llama-3.1-8b-instant",
-                messages=[
-                    {"role": "system", "content": "You are a research assistant that generates intelligent follow-up questions to help users explore topics deeper. Generate specific, actionable questions that would naturally continue the research conversation."},
-                    {"role": "user", "content": hint_prompt}
-                ],
-                max_tokens=150,
-                temperature=0.5,
-                timeout=5.0  # 5 second timeout
-            )
-        except Exception as e:
-            logging.warning(f"LLM hint generation failed: {e}")
-            return []
+        # Generate hints using LLM
+        completion = client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[
+                {"role": "system", "content": "You are a research assistant that generates intelligent follow-up questions to help users explore topics deeper. Generate specific, actionable questions that would naturally continue the research conversation."},
+                {"role": "user", "content": hint_prompt}
+            ],
+            max_tokens=200,
+            temperature=0.5
+        )
         
         response = completion.choices[0].message.content
         if not response:
@@ -1149,8 +1143,8 @@ def send_interactive_hints(update, response: str, tools_used: list = None):
             # Add a separator for next steps
             keyboard.append([InlineKeyboardButton("——— Smart Next Steps ———", callback_data="separator")])
             
-            # Add up to 4 immediate next step suggestions with emphasis on paper selection
-            for i, next_step in enumerate(tool_suggestions['immediate_next_steps'][:4]):
+            # Add up to 2 immediate next step suggestions
+            for i, next_step in enumerate(tool_suggestions['immediate_next_steps'][:2]):
                 # Extract tool name and create smart button
                 if ' - ' in next_step:
                     tool_name, description = next_step.split(' - ', 1)
@@ -1162,13 +1156,7 @@ def send_interactive_hints(update, response: str, tools_used: list = None):
                         'get_research_prompt': '🗺️'
                     }.get(tool_name, '🔧')
                     
-                    # Enhance paper selection suggestions
-                    if tool_name == 'extract_info' and ('specific' in description.lower() or 'select' in description.lower() or 'paper' in description.lower()):
-                        button_text = f"{tool_emoji} Select paper by ID..."
-                    elif tool_name == 'extract_info':
-                        button_text = f"{tool_emoji} Get paper details..."
-                    else:
-                        button_text = f"{tool_emoji} {description[:35]}..."
+                    button_text = f"{tool_emoji} {description[:35]}..."
                     callback_data = f"smart_step_{i}_{update.effective_user.id}"
                     keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
         
@@ -1178,12 +1166,12 @@ def send_interactive_hints(update, response: str, tools_used: list = None):
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        # Create simple researcher-friendly message
+        # Create intelligent message based on tools used
         if tools_used:
             tools_text = ", ".join(tools_used)
-            message_text = f"📊 Based on your {tools_text} results, here are your next research actions:"
+            message_text = f"🧠 Based on the {tools_text} results, here are intelligent next steps:"
         else:
-            message_text = "🔬 Research Actions: Click to explore further"
+            message_text = "💡 What to explore next? Click a question below:"
         
         # Send message with enhanced interactive buttons
         send_telegram_message(
@@ -1353,95 +1341,128 @@ def handle_hint_callback(update, context):
     Sends the question and triggers a bot response with enhanced tool context.
     """
     query = update.callback_query
+    query.answer()  # Acknowledge the callback
     
-    # Immediate acknowledgment to prevent timeout
-    try:
-        query.answer()
-    except Exception as e:
-        logging.warning(f"Callback query answer failed: {e}")
-        return
+    # Parse callback data: hint_{index}_{user_id}, onboard_{index}_{user_id}, smart_step_{index}_{user_id}
+    callback_data = query.data
     
     # Handle separator buttons (do nothing)
-    if query.data == "separator":
+    if callback_data == "separator":
         return
     
-    try:
-        # Parse callback data: hint_{index}_{user_id}, onboard_{index}_{user_id}, smart_step_{index}_{user_id}
-        callback_data = query.data
+    if callback_data.startswith('arxiv_search_'):
+        # Handle arXiv Papers button click
+        user_id = int(callback_data.split('_')[2])
         
-        # Extract parts
+        # Send a prompt asking what to search for
+        query.message.reply_text("📄 What research topic would you like to search for on arXiv?\n\nJust type your topic and I'll find the latest papers for you!")
+        
+    elif callback_data.startswith('smart_step_'):
+        # Handle smart next step suggestions
         parts = callback_data.split('_')
-        if len(parts) < 3:
-            return
+        if len(parts) >= 3:
+            step_index = int(parts[2])
+            user_id = int(parts[3])
             
-        callback_type = parts[0]
-        question_index = int(parts[1])
-        user_id = int(parts[2])
-        
-        # Get user data
-        udata = get_user_data(user_id)
-        questions = []
-        
-        # Determine which questions to use
-        if callback_type == "hint":
-            questions = udata.get('follow_up_questions', [])
-        elif callback_type == "onboard":
-            questions = udata.get('onboarding_questions', [])
-        elif callback_type == "smart_step":
-            questions = udata.get('smart_steps', [])
-        
-        if question_index < len(questions):
-            selected_question = questions[question_index]
+            # Get user's stored tool suggestions
+            udata = get_user_data(user_id)
+            tool_suggestions = udata.get('tool_suggestions', {})
             
-            # Send the question as if user typed it
-            context.bot.send_message(
-                chat_id=query.message.chat_id,
-                text=f"💡 {selected_question}"
-            )
+            if 'immediate_next_steps' in tool_suggestions and step_index < len(tool_suggestions['immediate_next_steps']):
+                next_step = tool_suggestions['immediate_next_steps'][step_index]
+                
+                # Extract tool name and description
+                if ' - ' in next_step:
+                    tool_name, description = next_step.split(' - ', 1)
+                    
+                    # Create an intelligent question that will trigger the right tool
+                    tool_questions = {
+                        'extract_info': "Can you get detailed information about the most relevant paper from the results?",
+                        'search_papers': f"Search for more papers related to this topic",
+                        'get_topic_papers': "Show me papers that have been saved in this research area",
+                        'get_available_folders': "What other research topics are available to explore?",
+                        'get_research_prompt': "Give me structured research guidance for this topic"
+                    }
+                    
+                    smart_question = tool_questions.get(tool_name, description)
+                    
+                    # Enhance the question with tool context for better LLM tool selection
+                    enhanced_question = enhance_question_with_tool_context(smart_question, tool_name)
+                    
+                    # Send the enhanced question
+                    query.message.reply_text(f"🧠 Smart suggestion: {enhanced_question}")
+                    
+                    # Create enhanced context for processing
+                    fake_context = type('Context', (), {})() 
+                    fake_context.args = enhanced_question.split()
+                    
+                    # Create a new update object
+                    fake_update = type('Update', (), {})()  
+                    fake_update.effective_user = query.from_user
+                    fake_update.effective_chat = query.message.chat
+                    fake_update.message = query.message
+                    
+                    # Use last model or default to llama
+                    last_model = udata.get('last_model', 'llama')
+                    
+                    if last_model == 'deepseek':
+                        deepseek_command(fake_update, fake_context)
+                    else:
+                        llama_command(fake_update, fake_context)
+        
+    elif callback_data.startswith('hint_') or callback_data.startswith('onboard_'):
+        parts = callback_data.split('_')
+        if len(parts) >= 3:
+            hint_index = int(parts[1])
+            user_id = int(parts[2])
             
-            # Process the question by creating a simulated message
-            if callback_type == "hint" or callback_type == "smart_step":
-                # Create a simulated message for LLM processing
-                fake_message = type('Message', (), {})()
-                fake_message.text = selected_question
-                fake_message.from_user = update.effective_user
-                fake_message.chat = update.effective_chat
+            # Get user's stored hints or onboarding questions
+            udata = get_user_data(user_id)
+            
+            if callback_data.startswith('onboard_'):
+                # Handle onboarding research topic selection
+                questions = udata.get('onboarding_questions', [])
+            else:
+                # Handle regular conversation hints
+                questions = udata.get('current_hints', [])
+            
+            if hint_index < len(questions):
+                question = questions[hint_index]
                 
-                # Create fake update and context
-                fake_update = type('Update', (), {})()
-                fake_update.effective_user = update.effective_user
-                fake_update.effective_chat = update.effective_chat
-                fake_update.message = fake_message
+                # Remove emoji prefix from the question for cleaner display
+                clean_question = question.split(' ', 1)[1] if ' ' in question else question
                 
-                fake_context = type('Context', (), {})()
-                fake_context.args = selected_question.split()
+                # Predict which tool this question will likely trigger
+                predicted_tool = predict_next_tool_from_question(clean_question)
                 
-                # Process with LLama command
-                llama_command(fake_update, fake_context)
+                # Enhance the question with tool context for better LLM tool selection
+                enhanced_question = enhance_question_with_tool_context(clean_question, predicted_tool)
                 
-            elif callback_type == "onboard":
-                # Create a simulated message for search processing
-                fake_message = type('Message', (), {})()
-                fake_message.text = selected_question
-                fake_message.from_user = update.effective_user
-                fake_message.chat = update.effective_chat
+                # Send the enhanced question as if the user asked it
+                query.message.reply_text(f"💬 {enhanced_question}")
                 
-                # Create fake update and context
-                fake_update = type('Update', (), {})()
-                fake_update.effective_user = update.effective_user
-                fake_update.effective_chat = update.effective_chat
-                fake_update.message = fake_message
+                # Create a fake context with the enhanced question as args
+                fake_context = type('Context', (), {})() 
+                fake_context.args = enhanced_question.split()
                 
-                fake_context = type('Context', (), {})()
-                fake_context.args = selected_question.split()
+                # Create a new update object for the question
+                fake_update = type('Update', (), {})()  
+                fake_update.effective_user = query.from_user
+                fake_update.effective_chat = query.message.chat
+                fake_update.message = query.message
                 
-                # Process with search command
-                search_command(fake_update, fake_context)
+                # For onboarding, default to llama; for hints, use last model
+                if callback_data.startswith('onboard_'):
+                    last_model = 'llama'  # Default for new users
+                else:
+                    last_model = udata.get('last_model', 'llama')
                 
-    except (ValueError, IndexError) as e:
-        logging.error(f"Error handling hint callback: {e}")
-    except Exception as e:
-        logging.error(f"Unexpected error in handle_hint_callback: {e}")
+                if last_model == 'deepseek':
+                    # Process as deepseek command
+                    deepseek_command(fake_update, fake_context)
+                else:
+                    # Process as llama command (default)
+                    llama_command(fake_update, fake_context)
 
 def get_deepseek_reply(messages: list, enable_tools: bool = True, update=None) -> str:
     """
@@ -1696,7 +1717,7 @@ def start(update, context):
         "I can chat naturally AND automatically search thousands of academic papers from ArXiv when you need research insights. No more switching between tools!\n\n" +
         "🤖 Two brilliant AI assistants available:\n" +
         "• LLAMA - Great for general research and explanations\n" +
-        "• Deepseek - Excellent for detailed research exploration\n\n" +
+        "• Deepseek - Excellent for deep technical analysis\n\n" +
         "💬 Smart Chat Commands:\n" +
         "/llama <question> - Chat with LLAMA AI\n" +
         "/deepseek <question> - Chat with Deepseek AI\n" +
@@ -1821,13 +1842,11 @@ def paper_command(update, context):
         if "error" in info:
             send_telegram_message(update, f"Error: {info['error']}")
             return
-        # Format paper information with better structure and emphasis on URL
-        msg = f"📄 **Paper Details for {paper_id}**\n\n"
-        msg += f"**Title:** {info.get('title', 'N/A')}\n\n"
-        msg += f"**Authors:** {', '.join(info.get('authors', []))}\n\n"
-        msg += f"**Published:** {info.get('published', 'N/A')}\n\n"
-        msg += f"**🔗 PDF URL:** {info.get('pdf_url', 'N/A')}\n\n"
-        msg += f"**Abstract:**\n{info.get('summary', 'N/A')}\n"
+        msg = f"Paper Info for {paper_id}:\n"
+        msg += f"Title: {info.get('title', 'N/A')}\n"
+        msg += f"Authors: {', '.join(info.get('authors', []))}\n"
+        msg += f"Abstract: {info.get('summary', 'N/A')}\n"
+        msg += f"URL: {info.get('pdf_url', 'N/A')}\n"
         send_telegram_message(update, msg)
     except Exception as e:
         send_telegram_message(update, f"Error retrieving paper info: {e}")
@@ -1904,7 +1923,7 @@ def llama_command(update, context):
     
     # Determine the appropriate system message based on research mode
     if auto_research_enabled:
-        system_content = "You are a helpful research assistant with access to ArXiv academic papers. When users ask about research topics, recent papers, or want to find academic information, automatically use the available tools to search for and retrieve relevant papers. Focus on metadata, abstracts, and summaries for paper exploration. Integrate the research results naturally into your responses. Be conversational and helpful. IMPORTANT: Always preserve and clearly display PDF URLs when providing paper information. Format URLs as clickable links when possible. Guide users to select specific papers by ID for detailed exploration."
+        system_content = "You are a helpful research assistant with access to ArXiv academic papers. When users ask about research topics, recent papers, or want to find academic information, automatically use the available tools to search for and retrieve relevant papers. Integrate the research results naturally into your responses. Be conversational and helpful."
     else:
         system_content = "You are a helpful, friendly AI assistant. Engage in natural conversation and provide helpful responses on a wide variety of topics. Be conversational, informative, and engaging. Do not mention research papers, academic sources, or offer to search for papers."
     
@@ -1986,7 +2005,7 @@ def deepseek_command(update, context):
     
     # Determine the appropriate system message based on research mode
     if auto_research_enabled:
-        system_content = "You are a helpful research assistant with access to ArXiv academic papers. When users ask about research topics, recent papers, or want to find academic information, automatically use the available tools to search for and retrieve relevant papers. Focus on metadata, abstracts, and summaries for paper exploration. Integrate the research results naturally into your responses. Be conversational and helpful. IMPORTANT: Always preserve and clearly display PDF URLs when providing paper information. Format URLs as clickable links when possible. Guide users to select specific papers by ID for detailed exploration."
+        system_content = "You are a helpful research assistant with access to ArXiv academic papers. When users ask about research topics, recent papers, or want to find academic information, automatically use the available tools to search for and retrieve relevant papers. Integrate the research results naturally into your responses. Be conversational and helpful."
     else:
         system_content = "You are a helpful, friendly AI assistant. Engage in natural conversation and provide helpful responses on a wide variety of topics. Be conversational, informative, and engaging. Do not mention research papers, academic sources, or offer to search for papers."
     
