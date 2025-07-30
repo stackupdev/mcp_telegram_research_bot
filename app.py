@@ -1202,7 +1202,58 @@ def handle_hint_callback(update, context):
     elif callback_data.startswith('arxiv_search_'):
         query.message.reply_text("📄 What research topic would you like to search for on arXiv?\n\nJust type your topic and I'll find the latest papers for you!")
         
-    elif callback_data.startswith('hint_') or callback_data.startswith('onboard_'):
+    elif callback_data.startswith('onboard_'):
+        # Handle onboarding category selection
+        try:
+            # Extract the index from callback data: onboard_{index}_{user_id}
+            parts = callback_data.split('_')
+            if len(parts) >= 2:
+                index = int(parts[1])
+                
+                # Get the selected category from stored onboarding questions
+                udata = get_user_data(user_id)
+                if 'onboarding_questions' in udata and index < len(udata['onboarding_questions']):
+                    selected_category = udata['onboarding_questions'][index]
+                    
+                    # Send the category directly to the appropriate AI model
+                    # Check which conversation mode the user is in
+                    if is_in_conversation_mode(user_id):
+                        mode = udata.get('conversation_mode', 'none')
+                        
+                        if mode == 'llama':
+                            # Create a fake update object for llama_command
+                            fake_update = type('obj', (object,), {
+                                'effective_user': update.effective_user,
+                                'message': type('obj', (object,), {
+                                    'text': selected_category,
+                                    'reply_text': query.message.reply_text
+                                })()
+                            })()
+                            llama_command(fake_update, context)
+                            
+                        elif mode == 'deepseek':
+                            # Create a fake update object for deepseek_command
+                            fake_update = type('obj', (object,), {
+                                'effective_user': update.effective_user,
+                                'message': type('obj', (object,), {
+                                    'text': selected_category,
+                                    'reply_text': query.message.reply_text
+                                })()
+                            })()
+                            deepseek_command(fake_update, context)
+                        else:
+                            query.message.reply_text("Please select an AI model first using /llama or /deepseek")
+                    else:
+                        query.message.reply_text("Please select an AI model first using /llama or /deepseek")
+                else:
+                    query.message.reply_text("Sorry, that category is no longer available. Please try again.")
+            else:
+                query.message.reply_text("Invalid selection. Please try again.")
+        except Exception as e:
+            print(f"Error handling onboarding callback: {e}")
+            query.message.reply_text("Sorry, there was an error processing your selection. Please try again.")
+            
+    elif callback_data.startswith('hint_'):
         # Simplified hint handling - just prompt for direct input
         query.message.reply_text("💬 What would you like to research or explore next?")
 
