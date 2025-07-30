@@ -1210,7 +1210,29 @@ def handle_hint_callback(update, context):
         query.message.reply_text("📄 Please provide a paper ID or title to get detailed information.")
         
     elif callback_data.startswith('direct_topic_papers_'):
-        query.message.reply_text("📚 What research topic would you like to see saved papers for?\n\nUse the exact topic name from Browse Topics.")
+        # Show available topics as clickable buttons instead of text prompt
+        try:
+            topics = get_available_folders()
+            if not topics:
+                query.message.reply_text("📝 No topics available yet.\n\nStart by searching for papers on topics you're interested in!")
+                return
+            
+            # Create inline keyboard with topic buttons
+            keyboard = []
+            for topic in topics[:10]:  # Limit to 10 topics to avoid too many buttons
+                # Format topic name nicely
+                formatted_name = topic.replace("_", " ").title()
+                callback_data = f"topic_papers_{topic}_{user_id}"
+                keyboard.append([InlineKeyboardButton(f"📚 {formatted_name}", callback_data=callback_data)])
+            
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            query.message.reply_text(
+                "📚 **Select a Topic to View Papers:**\n\nClick on any topic below to see all saved papers:",
+                reply_markup=reply_markup
+            )
+        except Exception as e:
+            print(f"Error showing topic buttons: {e}")
+            query.message.reply_text("❌ Error loading topics. Please try again.")
         
     elif callback_data.startswith('direct_guide_'):
         query.message.reply_text("🎯 What research topic would you like a structured guide for?")
@@ -1283,6 +1305,43 @@ def handle_hint_callback(update, context):
         except Exception as e:
             print(f"Error handling onboarding callback: {e}")
             query.message.reply_text("Sorry, there was an error processing your selection. Please try again.")
+            
+    elif callback_data.startswith('topic_papers_'):
+        # Handle topic papers selection from inline buttons
+        try:
+            # Extract topic from callback data: topic_papers_{topic}_{user_id}
+            parts = callback_data.split('_', 2)  # Split into max 3 parts
+            if len(parts) >= 3:
+                topic = parts[2].rsplit('_', 1)[0]  # Remove user_id from end
+                
+                # Get papers for the selected topic
+                papers_data = get_topic_papers(topic)
+                
+                if isinstance(papers_data, str) and "error" in papers_data.lower():
+                    query.message.reply_text(f"❌ Error: {papers_data}")
+                    return
+                
+                if not papers_data:
+                    query.message.reply_text(f"📝 No papers found for topic '{topic.replace('_', ' ').title()}'.")
+                    return
+                
+                # Format and send the papers list
+                topic_display = topic.replace('_', ' ').title()
+                response = f"📚 **Papers on '{topic_display}'** ({len(papers_data)} found):\n\n"
+                
+                for i, paper in enumerate(papers_data, 1):
+                    response += f"{i}. **{paper.get('title', 'Unknown Title')}**\n"
+                    response += f"   ID: {paper.get('id', 'Unknown ID')}\n"
+                    response += f"   Authors: {', '.join(paper.get('authors', [])[:2])}{'...' if len(paper.get('authors', [])) > 2 else ''}\n"
+                    response += f"   Published: {paper.get('published', 'Unknown')[:10]}\n\n"
+                
+                response += "Use the 📄 Paper Info button to get detailed information about a specific paper."
+                query.message.reply_text(response)
+            else:
+                query.message.reply_text("Invalid topic selection. Please try again.")
+        except Exception as e:
+            print(f"Error handling topic papers callback: {e}")
+            query.message.reply_text("Sorry, there was an error loading the papers. Please try again.")
             
     elif callback_data.startswith('hint_'):
         # Simplified hint handling - just prompt for direct input
