@@ -1222,6 +1222,46 @@ Make them specific and engaging for someone wanting to explore current research.
             "How is machine learning advancing climate research?"
         ]
 
+def generate_onboarding_button_labels(questions: list) -> list:
+    """
+    Generate button labels for onboarding research topics using LLM.
+    """
+    try:
+        client = Groq()
+        
+        prompt = """Generate concise button labels for the following research questions:
+        
+{}
+        
+Format as a list, one label per line, without numbering or bullets. Make each label specific to the content and designed to trigger helpful tool usage."""
+        
+        completion = client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[
+                {"role": "system", "content": "You are a research assistant that generates concise button labels for research topics."},
+                {"role": "user", "content": prompt.format('\n'.join(questions))}
+            ],
+            max_tokens=200,
+            temperature=0.7
+        )
+        
+        response = completion.choices[0].message.content
+        if not response:
+            return []
+        
+        # Parse labels from response
+        labels = []
+        for line in response.strip().split('\n'):
+            line = line.strip()
+            if line:
+                labels.append(line)
+        
+        return labels[:len(questions)]  # Limit to number of questions
+        
+    except Exception as e:
+        print(f"Error generating onboarding button labels: {e}")
+        return []
+
 def send_onboarding_research_suggestions(update):
     """
     Send trending research topics as clickable buttons for new users.
@@ -1229,30 +1269,32 @@ def send_onboarding_research_suggestions(update):
     # Generate trending research questions
     research_questions = generate_onboarding_research_terms()
     
-    if research_questions:
-        # Generate button labels for the research questions
-        button_labels = generate_button_labels_from_hints(research_questions)
-        
-        # Create inline keyboard with research topic buttons
-        keyboard = []
-        user_id = update.effective_user.id
-        
-        for i, (question, button_text) in enumerate(zip(research_questions, button_labels)):
-            callback_data = f"onboard_{i}_{user_id}"
-            keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
-        
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        # Send message with trending research topics
-        send_telegram_message(
-            update,
-            "🔥 **Trending Research Topics** - Click to explore:",
-            reply_markup=reply_markup
-        )
-        
-        # Store onboarding questions in user data for callback handling
-        udata = get_user_data(user_id)
-        udata['onboarding_questions'] = research_questions
+    if not research_questions:
+        send_telegram_message(update, "Welcome! Start by asking me any research question.")
+        return
+    
+    keyboard = []
+    user_id = update.effective_user.id
+    
+    # Generate button labels using LLM
+    button_labels = generate_onboarding_button_labels(research_questions)
+    
+    for i, (question, button_text) in enumerate(zip(research_questions, button_labels)):
+        callback_data = f"onboard_{i}_{user_id}"
+        keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    # Send message with trending research topics
+    send_telegram_message(
+        update,
+        "🔥 **Trending Research Topics** - Click to explore:",
+        reply_markup=reply_markup
+    )
+    
+    # Store onboarding questions in user data for callback handling
+    udata = get_user_data(user_id)
+    udata['onboarding_questions'] = research_questions
 
 def handle_hint_callback(update, context):
     """
