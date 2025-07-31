@@ -676,7 +676,7 @@ def get_llama_reply(messages: list, enable_tools: bool = True, update=None) -> s
         
         # Prepare the API call parameters
         api_params = {
-            "model": "llama-3.1-70b-versatile",
+            "model": "llama-3.1-8b-instant",
             "messages": messages
         }
         
