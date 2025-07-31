@@ -1165,19 +1165,26 @@ def send_onboarding_research_suggestions(update):
         # Use the original topic name with a default emoji
         button_labels.append(f"🔬 {research_questions[missing_index]}")
     
-    # Create buttons and store exact topic mapping
+    # Create buttons with topic-embedded callback data to eliminate index mapping issues
     topic_button_mapping = {}
     
     for i, question in enumerate(research_questions):
         # Use the corresponding button label, or fallback to the question itself
         button_text = button_labels[i] if i < len(button_labels) else f"🔬 {question}"
-        callback_data = f"onboard_{i}_{user_id}"
+        
+        # Embed the actual topic in callback data instead of relying on index
+        # Use base64 encoding to handle special characters and spaces safely
+        import base64
+        topic_encoded = base64.b64encode(question.encode('utf-8')).decode('utf-8')
+        callback_data = f"topic_{topic_encoded}_{user_id}"
+        
         keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
         
         # Store the exact mapping for debugging
         topic_button_mapping[i] = {
             'topic': question,
-            'button_text': button_text
+            'button_text': button_text,
+            'encoded_topic': topic_encoded
         }
     
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -1214,123 +1221,145 @@ def handle_hint_callback(update, context):
         return
     
 
-    elif callback_data.startswith('hint_') or callback_data.startswith('onboard_'):
+    elif callback_data.startswith('hint_') or callback_data.startswith('onboard_') or callback_data.startswith('topic_'):
         # Handle topic button clicks (both onboarding and regular hints)
-        parts = callback_data.split('_')
-        if len(parts) >= 3:
-            hint_index = int(parts[1])
-            user_id = int(parts[2])
-            
-            udata = get_user_data(user_id)
-            
-            if callback_data.startswith('onboard_'):
-                topics = udata.get('onboarding_questions', [])
-                mapping = udata.get('onboarding_mapping', {})
-                print(f"DEBUG: Onboarding callback - Index: {hint_index}, Available topics: {len(topics)}")
-                if hint_index in mapping:
-                    print(f"DEBUG: Button mapping - Button: '{mapping[hint_index]['button_text']}' -> Topic: '{mapping[hint_index]['topic']}'")
-            else:
-                topics = udata.get('current_hints', [])
-                print(f"DEBUG: Regular hint callback - Index: {hint_index}, Available topics: {len(topics)}")
-            
-            if hint_index < len(topics):
-                # Topic is now a simple name (e.g., "Quantum Computing")
-                topic = topics[hint_index].strip()
-                print(f"DEBUG: Retrieved topic at index {hint_index}: '{topic}'")  
+        
+        if callback_data.startswith('topic_'):
+            # New topic-embedded callback system
+            parts = callback_data.split('_')
+            if len(parts) >= 3:
+                topic_encoded = parts[1]
+                user_id = int(parts[2])
                 
-                # Check if auto-research is enabled for this user
-                auto_research_enabled = udata.get('auto_research', True)
-                
-                if not auto_research_enabled:
-                    # Research is disabled, inform user
-                    query.message.reply_text(
-                        f"🔬 Research mode is currently OFF.\n\n"
-                        f"To search for papers on '{topic}', please:\n"
-                        f"1. Enable research mode by clicking the 🔬 Research toggle button\n"
-                        f"2. Or use the manual command: `/search {topic}`\n\n"
-                        f"Research mode affects automatic paper searching when chatting with AI assistants.",
-                        parse_mode='Markdown'
-                    )
-                    return
-                
-                # Execute direct search using the topic name with progressive feedback
+                # Decode the topic from base64
+                import base64
                 try:
-                    # Create a fake update object for progressive feedback
-                    class FakeUser:
-                        def __init__(self, user_id):
-                            self.id = user_id
-                    
-                    class FakeUpdate:
-                        def __init__(self, user_id):
-                            self.effective_user = FakeUser(user_id)
-                            self.effective_chat = query.message.chat
-                    
-                    fake_update = FakeUpdate(user_id)
-                    
-                    # Send initial search status
-                    send_progressive_research_update(fake_update, "search_papers", "starting", f"Searching ArXiv for papers on {topic}")
-                    
-                    paper_ids = search_papers(topic, 10)
-                    
-                    if paper_ids:
-                        # Update progress
-                        send_progressive_research_update(fake_update, "search_papers", "completed", f"Found {len(paper_ids)} papers")
-                        send_progressive_research_update(fake_update, "extract_info", "starting", "Extracting paper details")
-                        
-                        response = f"📚 Recent papers on {topic}:\n\n"
-                        
-                        for i, paper_id in enumerate(paper_ids[:10], 1):
-                            try:
-                                # Show progress for each paper extraction
-                                send_progressive_research_update(fake_update, "extract_info", "processing", f"Processing paper {i}/{len(paper_ids[:10])}")
-                                
-                                paper_info = extract_info(paper_id)
-                                if isinstance(paper_info, dict) and 'error' not in paper_info:
-                                    title = paper_info.get('title', 'Unknown Title')  # No truncation
-                                    authors = ', '.join(paper_info.get('authors', [])[:2])
-                                    if len(paper_info.get('authors', [])) > 2:
-                                        authors += ' et al.'
-                                    
-                                    published = paper_info.get('published', 'Unknown')
-                                    pdf_url = paper_info.get('pdf_url', '')
-                                    summary = paper_info.get('summary', 'No summary available')
-                                    
-                                    # Truncate summary to reasonable length
-                                    if len(summary) > 200:
-                                        summary = summary[:200] + '...'
-                                    
-                                    response += f"{i}. {title}\n"  # No bold formatting
-                                    response += f"   Authors: {authors} ({published})\n"
-                                    if pdf_url:
-                                        response += f"   [📄 PDF]({pdf_url})\n"
-                                    response += f"   Summary: {summary}\n\n"  # Include truncated summary
-                                else:
-                                    response += f"{i}. Paper ID: `{paper_id}`\n\n"
-                            except Exception:
-                                response += f"{i}. Paper ID: `{paper_id}`\n\n"
-                        
-                        # Final completion message
-                        finalize_research_feedback(fake_update, 2, 2)
-                    else:
-                        send_progressive_research_update(fake_update, "search_papers", "completed", "No papers found")
-                        response = f"❌ No papers found for '{topic}'. Try a different research area."
-                    
-                    # Use send_telegram_message to properly handle long messages and disable link previews
-                    # Create a fake update object for send_telegram_message
-                    class FakeMessage:
-                        def reply_text(self, text, parse_mode=None, reply_markup=None):
-                            query.message.reply_text(text, parse_mode=parse_mode, reply_markup=reply_markup, disable_web_page_preview=True)
-                    
-                    class FakeUpdate:
-                        def __init__(self):
-                            self.message = FakeMessage()
-                    
-                    fake_update = FakeUpdate()
-                    send_telegram_message(fake_update, response)
-                    
+                    topic = base64.b64decode(topic_encoded.encode('utf-8')).decode('utf-8')
+                    print(f"DEBUG: Topic-embedded callback - User: {user_id}, Topic: '{topic}'")
                 except Exception as e:
-                    query.message.reply_text(f"❌ Error searching for papers on '{topic}': {str(e)}", disable_web_page_preview=True)
-                    llama_command(fake_update, fake_context)
+                    print(f"DEBUG: Error decoding topic: {e}")
+                    query.message.reply_text("❌ Error processing topic. Please try again.")
+                    return
+        else:
+            # Legacy index-based callback system (for backward compatibility)
+            parts = callback_data.split('_')
+            if len(parts) >= 3:
+                hint_index = int(parts[1])
+                user_id = int(parts[2])
+                
+                udata = get_user_data(user_id)
+                
+                if callback_data.startswith('onboard_'):
+                    topics = udata.get('onboarding_questions', [])
+                    mapping = udata.get('onboarding_mapping', {})
+                    print(f"DEBUG: Legacy onboarding callback - Index: {hint_index}, Available topics: {len(topics)}")
+                    if hint_index in mapping:
+                        print(f"DEBUG: Button mapping - Button: '{mapping[hint_index]['button_text']}' -> Topic: '{mapping[hint_index]['topic']}'")
+                else:
+                    topics = udata.get('current_hints', [])
+                    print(f"DEBUG: Legacy hint callback - Index: {hint_index}, Available topics: {len(topics)}")
+                
+                if hint_index < len(topics):
+                    # Topic is now a simple name (e.g., "Quantum Computing")
+                    topic = topics[hint_index].strip()
+                    print(f"DEBUG: Retrieved topic at index {hint_index}: '{topic}'")  
+                else:
+                    query.message.reply_text("❌ Topic not found. Please try again.")
+                    return
+        
+        # Check if auto-research is enabled for this user (applies to both systems)
+        udata = get_user_data(user_id)
+        auto_research_enabled = udata.get('auto_research', True)
+        
+        if not auto_research_enabled:
+            # Research is disabled, inform user
+            query.message.reply_text(
+                f"🔬 Research mode is currently OFF.\n\n"
+                f"To search for papers on '{topic}', please:\n"
+                f"1. Enable research mode by clicking the 🔬 Research toggle button\n"
+                f"2. Or use the manual command: `/search {topic}`\n\n"
+                f"Research mode affects automatic paper searching when chatting with AI assistants.",
+                parse_mode='Markdown'
+            )
+            return
+        
+        # Execute direct search using the topic name with progressive feedback
+        try:
+            # Create a fake update object for progressive feedback
+            class FakeUser:
+                def __init__(self, user_id):
+                    self.id = user_id
+            
+            class FakeUpdate:
+                def __init__(self, user_id):
+                    self.effective_user = FakeUser(user_id)
+                    self.effective_chat = query.message.chat
+            
+            fake_update = FakeUpdate(user_id)
+            
+            # Send initial search status
+            send_progressive_research_update(fake_update, "search_papers", "starting", f"Searching ArXiv for papers on {topic}")
+            
+            paper_ids = search_papers(topic, 10)
+            
+            if paper_ids:
+                # Update progress
+                send_progressive_research_update(fake_update, "search_papers", "completed", f"Found {len(paper_ids)} papers")
+                send_progressive_research_update(fake_update, "extract_info", "starting", "Extracting paper details")
+                
+                response = f"📚 Recent papers on {topic}:\n\n"
+                
+                for i, paper_id in enumerate(paper_ids[:10], 1):
+                    try:
+                        # Show progress for each paper extraction
+                        send_progressive_research_update(fake_update, "extract_info", "processing", f"Processing paper {i}/{len(paper_ids[:10])}")
+                        
+                        paper_info = extract_info(paper_id)
+                        if isinstance(paper_info, dict) and 'error' not in paper_info:
+                            title = paper_info.get('title', 'Unknown Title')  # No truncation
+                            authors = ', '.join(paper_info.get('authors', [])[:2])
+                            if len(paper_info.get('authors', [])) > 2:
+                                authors += ' et al.'
+                            
+                            published = paper_info.get('published', 'Unknown')
+                            pdf_url = paper_info.get('pdf_url', '')
+                            summary = paper_info.get('summary', 'No summary available')
+                            
+                            # Truncate summary to reasonable length
+                            if len(summary) > 200:
+                                summary = summary[:200] + '...'
+                            
+                            response += f"{i}. {title}\n"  # No bold formatting
+                            response += f"   Authors: {authors} ({published})\n"
+                            if pdf_url:
+                                response += f"   [📄 PDF]({pdf_url})\n"
+                            response += f"   Summary: {summary}\n\n"  # Include truncated summary
+                        else:
+                            response += f"{i}. Paper ID: `{paper_id}`\n\n"
+                    except Exception:
+                        response += f"{i}. Paper ID: `{paper_id}`\n\n"
+                
+                # Final completion message
+                finalize_research_feedback(fake_update, 2, 2)
+            else:
+                send_progressive_research_update(fake_update, "search_papers", "completed", "No papers found")
+                response = f"❌ No papers found for '{topic}'. Try a different research area."
+            
+            # Use send_telegram_message to properly handle long messages and disable link previews
+            # Create a fake update object for send_telegram_message
+            class FakeMessage:
+                def reply_text(self, text, parse_mode=None, reply_markup=None):
+                    query.message.reply_text(text, parse_mode=parse_mode, reply_markup=reply_markup, disable_web_page_preview=True)
+            
+            class FakeUpdate:
+                def __init__(self):
+                    self.message = FakeMessage()
+            
+            fake_update = FakeUpdate()
+            send_telegram_message(fake_update, response)
+            
+        except Exception as e:
+            query.message.reply_text(f"❌ Error searching for papers on '{topic}': {str(e)}", disable_web_page_preview=True)
 
 def get_deepseek_reply(messages: list, enable_tools: bool = True, update=None) -> str:
     """
