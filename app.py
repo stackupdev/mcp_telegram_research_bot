@@ -29,7 +29,7 @@ PAPER_DIR = "papers"
 # Maximum tokens to allow in conversation history before truncating
 MAX_TOKENS = 4000
 
-RESEARCH_SERVER_URL = "https://mcp-arxiv-server.onrender.com/sse"
+RESEARCH_SERVER_URL = "https://mcp-arxiv-server.onrender.com"
 
 # MCP client will be created as needed
 mcp_client_factory = None
@@ -89,69 +89,63 @@ async def read_mcp_resource(uri: str):
 # RESEARCH FUNCTIONALITY (via remote MCP server with SSE)
 # ============================================================================
 
-def search_papers(topic: str, max_results: int = 10) -> List[str]:
+def search_papers(query: str, max_results: int = 10, date_from: str = None, categories: List[str] = None) -> List[dict]:
     """
-    Call the remote MCP server to search for papers on a topic.
-    Returns: List of paper IDs
+    Search for papers with optional filters using the new arXiv server API.
+    Returns: List of paper metadata dictionaries
     """
     if not mcp_client_factory:
         print("MCP client factory not initialized")
         return []
     
     try:
-        # Call the search_papers tool via MCP using async helper
-        print(f"Calling search_papers tool with topic='{topic}', max_results={max_results}")
+        # Prepare arguments for the search_papers tool
+        args = {
+            "query": query,
+            "max_results": max_results
+        }
+        if date_from:
+            args["date_from"] = date_from
+        if categories:
+            args["categories"] = categories
+            
+        print(f"Calling search_papers tool with args: {args}")
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        result = loop.run_until_complete(call_mcp_tool("search_papers", topic=topic, max_results=max_results))
+        result = loop.run_until_complete(call_mcp_tool("search_papers", **args))
         loop.close()
         
         print(f"Search result: {result}")
-        print(f"Search result type: {type(result)}")
         
         # Handle MCP tool call result
         if hasattr(result, 'content') and result.content:
-            # Extract content from MCP tool result
             content = result.content
-            print(f"Extracted content: {content}")
-            if isinstance(content, list):
-                print(f"Found {len(content)} papers")
+            if isinstance(content, list) and len(content) > 0:
                 # Extract text from TextContent objects
-                paper_ids = []
-                for item in content:
-                    if hasattr(item, 'text'):
-                        paper_ids.append(item.text)
-                    elif isinstance(item, str):
-                        paper_ids.append(item)
-                    else:
-                        paper_ids.append(str(item))
-                return paper_ids
+                if hasattr(content[0], 'text'):
+                    try:
+                        # Try to parse as JSON
+                        papers = json.loads(content[0].text)
+                        return papers if isinstance(papers, list) else [papers]
+                    except json.JSONDecodeError:
+                        return [{"info": content[0].text}]
+                else:
+                    return [{"info": str(content[0])}]
             elif isinstance(content, str):
                 try:
-                    parsed = json.loads(content)
-                    if isinstance(parsed, list):
-                        return parsed
-                except:
-                    pass
-                return [content] if content else []
+                    papers = json.loads(content)
+                    return papers if isinstance(papers, list) else [papers]
+                except json.JSONDecodeError:
+                    return [{"info": content}]
         elif isinstance(result, list):
-            print(f"Found {len(result)} papers")
             return result
         elif isinstance(result, str):
-            print(f"Got string result: {result}")
-            # Try to parse if it's a JSON string
             try:
-                parsed = json.loads(result)
-                if isinstance(parsed, list):
-                    return parsed
-            except:
-                pass
-            return [result] if result else []
-        elif result is None:
-            print("Got None result from MCP tool")
-            return []
+                papers = json.loads(result)
+                return papers if isinstance(papers, list) else [papers]
+            except json.JSONDecodeError:
+                return [{"info": result}]
         else:
-            print(f"Unexpected result type: {type(result)}")
             return []
     except Exception as e:
         print(f"Error calling search_papers via MCP: {e}")
@@ -159,307 +153,256 @@ def search_papers(topic: str, max_results: int = 10) -> List[str]:
         print(f"Full traceback: {traceback.format_exc()}")
         return []
 
-def extract_info(paper_id: str):
+def download_paper(paper_id: str) -> dict:
     """
-    Call the remote MCP server to get info about a specific paper.
-    Returns: Paper info as dict or error message
+    Download a paper by its arXiv ID using the remote MCP server.
+    Returns: Download result with status information
     """
     if not mcp_client_factory:
         print("MCP client factory not initialized")
         return {"error": "MCP client not available"}
     
     try:
-        # Call the extract_info tool via MCP using async helper
+        print(f"Calling download_paper tool with paper_id='{paper_id}'")
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        result = loop.run_until_complete(call_mcp_tool("extract_info", paper_id=paper_id))
+        result = loop.run_until_complete(call_mcp_tool("download_paper", paper_id=paper_id))
         loop.close()
         
-        # Handle CallToolResult objects
+        print(f"Download result: {result}")
+        
+        # Handle MCP tool call result
         if hasattr(result, 'content') and result.content:
             content = result.content
             if isinstance(content, list) and len(content) > 0:
                 # Extract text from first TextContent object
-                first_item = content[0]
-                if hasattr(first_item, 'text'):
-                    text_content = first_item.text
+                if hasattr(content[0], 'text'):
+                    return {"status": "success", "message": content[0].text}
                 else:
-                    text_content = str(first_item)
-            else:
-                text_content = str(content)
+                    return {"status": "success", "message": str(content[0])}
+            elif isinstance(content, str):
+                return {"status": "success", "message": content}
         elif isinstance(result, str):
-            text_content = result
+            return {"status": "success", "message": result}
         elif result is None:
-            return {"error": "No result from MCP tool"}
+            return {"error": "No result from download operation"}
         else:
-            text_content = str(result)
-        
-        # Check for error messages
-        if isinstance(text_content, str) and text_content.startswith("There's no saved information"):
-            return {"error": text_content}
-        
-        # Try to parse as JSON
-        if isinstance(text_content, str):
-            try:
-                return json.loads(text_content)
-            except json.JSONDecodeError:
-                return {"error": text_content}
-        
-        return {"error": "Unexpected result format"}
+            return {"status": "success", "message": str(result)}
     except Exception as e:
-        print(f"Error calling extract_info via MCP: {e}")
-        return {"error": str(e)}
+        print(f"Error calling download_paper via MCP: {e}")
+        import traceback
+        print(f"Full traceback: {traceback.format_exc()}")
+        return {"error": f"Download failed: {str(e)}"}
 
-def get_available_folders():
+def list_papers() -> List[dict]:
     """
-    Call the remote MCP server to list all available topic folders.
-    Returns: List of topic folder names
+    List all downloaded papers using the remote MCP server.
+    Returns: List of paper information dictionaries
     """
     if not mcp_client_factory:
         print("MCP client factory not initialized")
         return []
     
     try:
-        # Get the folders resource via MCP using async helper
+        print("Calling list_papers tool")
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        result = loop.run_until_complete(read_mcp_resource("papers://folders"))
+        result = loop.run_until_complete(call_mcp_tool("list_papers"))
         loop.close()
         
-        # Handle MCP ReadResourceResult object
-        text_content = None
-        if hasattr(result, 'contents') and result.contents:
-            # Extract text from the first content item
-            first_content = result.contents[0]
-            if hasattr(first_content, 'text'):
-                text_content = first_content.text
-        elif isinstance(result, str):
-            text_content = result
+        print(f"List papers result: {result}")
         
-        if text_content:
-            lines = text_content.split('\n')
-            folders = []
-            for line in lines:
-                if line.strip().startswith('- '):
-                    folder_name = line.strip()[2:]  # Remove '- ' prefix
-                    folders.append(folder_name)
-            return folders
-        elif isinstance(result, dict):
-            return list(result.keys()) if result else []
+        # Handle MCP tool call result
+        if hasattr(result, 'content') and result.content:
+            content = result.content
+            if isinstance(content, list) and len(content) > 0:
+                if hasattr(content[0], 'text'):
+                    try:
+                        # Try to parse as JSON
+                        papers = json.loads(content[0].text)
+                        return papers if isinstance(papers, list) else [papers]
+                    except json.JSONDecodeError:
+                        return [{"info": content[0].text}]
+                else:
+                    return [{"info": str(content[0])}]
+            elif isinstance(content, str):
+                try:
+                    papers = json.loads(content)
+                    return papers if isinstance(papers, list) else [papers]
+                except json.JSONDecodeError:
+                    return [{"info": content}]
         elif isinstance(result, list):
             return result
-        elif result is None:
-            return []
+        elif isinstance(result, str):
+            try:
+                papers = json.loads(result)
+                return papers if isinstance(papers, list) else [papers]
+            except json.JSONDecodeError:
+                return [{"info": result}]
         else:
             return []
     except Exception as e:
-        print(f"Error calling get_available_folders via MCP: {e}")
+        print(f"Error calling list_papers via MCP: {e}")
         import traceback
         print(f"Full traceback: {traceback.format_exc()}")
         return []
 
-def get_topic_papers(topic: str):
+def read_paper(paper_id: str) -> dict:
     """
-    Call the remote MCP server to get all papers for a topic.
-    Returns: List of paper dictionaries
-    """
-    if not mcp_client_factory:
-        print("MCP client factory not initialized")
-        return []
-    
-    try:
-        # Get the topic papers resource via MCP using async helper
-        topic_formatted = topic.lower().replace(" ", "_")
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        result = loop.run_until_complete(read_mcp_resource(f"papers://{topic_formatted}"))
-        loop.close()
-        
-        # Handle MCP ReadResourceResult object
-        text_content = None
-        if hasattr(result, 'contents') and result.contents:
-            # Extract text from the first content item
-            first_content = result.contents[0]
-            if hasattr(first_content, 'text'):
-                text_content = first_content.text
-        elif isinstance(result, str):
-            text_content = result
-        
-        if not text_content:
-            return []
-            
-        # Check for no papers message
-        if "No papers found" in text_content or "No topics found" in text_content:
-            return []
-        
-        # Parse the markdown content to extract paper information
-        papers = []
-        lines = text_content.split('\n')
-        current_paper = {}
-        in_summary = False
-        
-        for line in lines:
-            line = line.strip()
-            
-            if line.startswith('## ') and not line.startswith('## Papers on'):
-                # New paper title
-                if current_paper and 'title' in current_paper:
-                    papers.append(current_paper)
-                current_paper = {'title': line[3:]}
-                in_summary = False
-                
-            elif line.startswith('- **Paper ID**:'):
-                paper_id = line.split(':', 1)[1].strip()
-                current_paper['id'] = paper_id
-                current_paper['entry_id'] = f"https://arxiv.org/abs/{paper_id}"
-                in_summary = False
-                
-            elif line.startswith('- **Authors**:'):
-                authors_str = line.split(':', 1)[1].strip()
-                current_paper['authors'] = [author.strip() for author in authors_str.split(',')]
-                in_summary = False
-                
-            elif line.startswith('- **Published**:'):
-                current_paper['published'] = line.split(':', 1)[1].strip()
-                in_summary = False
-                
-            elif line.startswith('- **PDF URL**:'):
-                # Extract URL from markdown link format [url](url)
-                url_part = line.split(':', 1)[1].strip()
-                if '[' in url_part and '](' in url_part:
-                    current_paper['pdf_url'] = url_part.split('](')[1].rstrip(')')
-                else:
-                    current_paper['pdf_url'] = url_part
-                in_summary = False
-                    
-            elif line.startswith('### Summary'):
-                # Start collecting summary lines
-                in_summary = True
-                current_paper['summary'] = ''
-                continue
-                
-            elif in_summary and line:
-                # Collect all summary lines - be more permissive about what we collect
-                # Stop only on clear section boundaries
-                if line.startswith('## ') and not line.startswith('## Papers on'):
-                    # This is a new paper, stop collecting summary
-                    in_summary = False
-                    # Process this line as a new paper title
-                    if current_paper and 'title' in current_paper:
-                        papers.append(current_paper)
-                    current_paper = {'title': line[3:]}
-                elif line.startswith('---') or line.startswith('Total papers:'):
-                    # End of section
-                    in_summary = False
-                else:
-                    # Continue collecting summary text
-                    if 'summary' not in current_paper:
-                        current_paper['summary'] = ''
-                    if current_paper['summary']:
-                        current_paper['summary'] += ' '
-                    current_paper['summary'] += line.replace('...', '').strip()
-                
-            elif line.startswith('## ') and not line.startswith('## Papers on'):
-                # New paper title (handle case where we're not in summary mode)
-                if not in_summary:
-                    if current_paper and 'title' in current_paper:
-                        papers.append(current_paper)
-                    current_paper = {'title': line[3:]}
-                in_summary = False
-                
-            elif line.startswith('---') or line.startswith('Total papers:'):
-                # End of current paper or section
-                in_summary = False
-        
-        # Don't forget the last paper
-        if current_paper and 'title' in current_paper:
-            papers.append(current_paper)
-        
-        return papers
-    except Exception as e:
-        print(f"Error calling get_topic_papers via MCP: {e}")
-        return []
-
-def get_research_prompt(topic: str, num_papers: int = 10) -> str:
-    """
-    Get a structured research prompt from the MCP server for enhanced AI research.
-    This uses the MCP prompt primitive to generate comprehensive research instructions.
+    Read the content of a downloaded paper by its arXiv ID using the remote MCP server.
+    Returns: Paper content and metadata
     """
     if not mcp_client_factory:
         print("MCP client factory not initialized")
-        return f"Search for {num_papers} academic papers about '{topic}' and provide a comprehensive analysis."
+        return {"error": "MCP client not available"}
     
     try:
-        # Access the generate_search_prompt via MCP
-        print(f"Getting research prompt for topic: {topic}")
+        print(f"Calling read_paper tool with paper_id='{paper_id}'")
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        result = loop.run_until_complete(call_mcp_tool("generate_search_prompt", topic=topic, num_papers=num_papers))
+        result = loop.run_until_complete(call_mcp_tool("read_paper", paper_id=paper_id))
         loop.close()
         
-        print(f"Prompt result: {result}")
+        print(f"Read paper result: {result}")
         
-        # Extract prompt content
+        # Handle MCP tool call result
         if hasattr(result, 'content') and result.content:
             content = result.content
             if isinstance(content, list) and len(content) > 0:
-                first_item = content[0]
-                if hasattr(first_item, 'text'):
-                    return first_item.text
+                # Extract text from first TextContent object
+                if hasattr(content[0], 'text'):
+                    try:
+                        # Try to parse as JSON if it's structured data
+                        parsed = json.loads(content[0].text)
+                        return parsed
+                    except json.JSONDecodeError:
+                        return {"content": content[0].text}
                 else:
-                    return str(first_item)
+                    return {"content": str(content[0])}
+            elif isinstance(content, str):
+                try:
+                    parsed = json.loads(content)
+                    return parsed
+                except json.JSONDecodeError:
+                    return {"content": content}
+        elif isinstance(result, str):
+            try:
+                parsed = json.loads(result)
+                return parsed
+            except json.JSONDecodeError:
+                return {"content": result}
+        elif result is None:
+            return {"error": "Paper not found or not downloaded"}
+        else:
+            return {"content": str(result)}
+    except Exception as e:
+        print(f"Error calling read_paper via MCP: {e}")
+        import traceback
+        print(f"Full traceback: {traceback.format_exc()}")
+        return {"error": f"Read failed: {str(e)}"}
+
+def get_deep_paper_analysis(paper_id: str) -> str:
+    """
+    Get a comprehensive analysis of a paper using the deep-paper-analysis prompt.
+    Returns: Detailed analysis text
+    """
+    if not mcp_client_factory:
+        print("MCP client factory not initialized")
+        return "MCP client not available"
+    
+    try:
+        print(f"Calling deep-paper-analysis prompt with paper_id='{paper_id}'")
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        # Use the prompt primitive instead of tool
+        async def get_prompt():
+            async with mcp_client_factory() as streams:
+                read_stream, write_stream = streams
+                async with ClientSession(read_stream, write_stream) as session:
+                    await session.initialize()
+                    result = await session.get_prompt("deep-paper-analysis", arguments={"paper_id": paper_id})
+                    return result
+        
+        result = loop.run_until_complete(get_prompt())
+        loop.close()
+        
+        print(f"Deep analysis prompt result: {result}")
+        
+        # Handle prompt result
+        if hasattr(result, 'messages') and result.messages:
+            # Extract content from prompt messages
+            analysis_parts = []
+            for message in result.messages:
+                if hasattr(message, 'content'):
+                    if hasattr(message.content, 'text'):
+                        analysis_parts.append(message.content.text)
+                    else:
+                        analysis_parts.append(str(message.content))
+            return "\n\n".join(analysis_parts)
+        elif hasattr(result, 'content'):
+            if isinstance(result.content, str):
+                return result.content
             else:
-                return str(content)
+                return str(result.content)
         elif isinstance(result, str):
             return result
         else:
-            # Fallback to basic prompt
-            return f"Search for {num_papers} academic papers about '{topic}' and provide a comprehensive analysis."
-            
+            return f"Analysis generated for paper {paper_id}"
     except Exception as e:
-        print(f"Error getting research prompt via MCP: {e}")
-        # Fallback to basic prompt
-        return f"Search for {num_papers} academic papers about '{topic}' and provide a comprehensive analysis."
+        print(f"Error calling deep-paper-analysis prompt via MCP: {e}")
+        import traceback
+        print(f"Full traceback: {traceback.format_exc()}")
+        return f"Error generating analysis: {str(e)}"
 
 # ============================================================================
 # FUNCTION CALLING INFRASTRUCTURE
 # ============================================================================
 
-# Define function schemas for MCP tools
+# Define function schemas for the new arXiv MCP tools
 MCP_TOOLS = [
     {
         "type": "function",
         "function": {
             "name": "search_papers",
-            "description": "Search for academic papers on ArXiv by topic. Use this when the user asks about research papers, recent studies, or wants to find papers on a specific topic.",
+            "description": "Search for academic papers on ArXiv with optional filters. Use this when the user asks about research papers, recent studies, or wants to find papers on a specific topic.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "topic": {
+                    "query": {
                         "type": "string",
-                        "description": "The research topic to search for (e.g., 'quantum computing', 'machine learning', 'neural networks')"
+                        "description": "The search query for papers (e.g., 'transformer architecture', 'quantum computing', 'machine learning')"
                     },
                     "max_results": {
                         "type": "integer",
-                        "description": "Maximum number of papers to return (default: 10, max: 10)",
+                        "description": "Maximum number of papers to return (default: 10)",
                         "default": 10
+                    },
+                    "date_from": {
+                        "type": "string",
+                        "description": "Filter papers from this date onwards (format: YYYY-MM-DD)"
+                    },
+                    "categories": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Filter by arXiv categories (e.g., ['cs.AI', 'cs.LG'])"
                     }
                 },
-                "required": ["topic"]
+                "required": ["query"]
             }
         }
     },
     {
         "type": "function",
         "function": {
-            "name": "extract_info",
-            "description": "Get detailed information about a specific paper using its ArXiv ID. Use this when the user wants more details about a specific paper.",
+            "name": "download_paper",
+            "description": "Download a paper by its arXiv ID for detailed analysis. Use this when you need to access the full content of a specific paper.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "paper_id": {
                         "type": "string",
-                        "description": "The ArXiv paper ID (e.g., '2301.12345')"
+                        "description": "The arXiv paper ID (e.g., '2401.12345')"
                     }
                 },
                 "required": ["paper_id"]
@@ -469,25 +412,8 @@ MCP_TOOLS = [
     {
         "type": "function",
         "function": {
-            "name": "get_topic_papers",
-            "description": "Get all papers that have been previously saved for a specific research topic. Use this to retrieve papers from a known research area.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "topic": {
-                        "type": "string",
-                        "description": "The topic name to get papers for (use exact topic names from get_available_folders)"
-                    }
-                },
-                "required": ["topic"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_available_folders",
-            "description": "List all available research topic folders that contain saved papers. Use this to see what research topics are available.",
+            "name": "list_papers",
+            "description": "List all downloaded papers. Use this to see what papers are available for detailed analysis.",
             "parameters": {
                 "type": "object",
                 "properties": {},
@@ -498,22 +424,34 @@ MCP_TOOLS = [
     {
         "type": "function",
         "function": {
-            "name": "get_research_prompt",
-            "description": "Generate a comprehensive research prompt for in-depth academic analysis. Use this when you want to provide structured, detailed research guidance for a topic.",
+            "name": "read_paper",
+            "description": "Read the content of a downloaded paper. Use this to access the full text and metadata of a paper for detailed analysis.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "topic": {
+                    "paper_id": {
                         "type": "string",
-                        "description": "The research topic to generate a comprehensive prompt for"
-                    },
-                    "num_papers": {
-                        "type": "integer",
-                        "description": "Number of papers to include in the research analysis (default: 10)",
-                        "default": 10
+                        "description": "The arXiv paper ID (e.g., '2401.12345')"
                     }
                 },
-                "required": ["topic"]
+                "required": ["paper_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_deep_paper_analysis",
+            "description": "Get a comprehensive analysis of a paper using the deep-paper-analysis prompt. Use this for in-depth academic analysis of a specific paper.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "paper_id": {
+                        "type": "string",
+                        "description": "The arXiv paper ID (e.g., '2401.12345')"
+                    }
+                },
+                "required": ["paper_id"]
             }
         }
     }
@@ -539,37 +477,34 @@ def execute_function_call(function_name: str, arguments: dict):
             arguments = {}
         
         if function_name == "search_papers":
-            topic = arguments.get("topic")
-            if not topic or not isinstance(topic, str):
+            query = arguments.get("query")
+            if not query or not isinstance(query, str):
                 return {
                     "success": False,
                     "function": function_name,
-                    "error": "Topic parameter is required and must be a string"
+                    "error": "Query parameter is required and must be a string"
                 }
             
             max_results = arguments.get("max_results", 10)
             try:
                 max_results = int(max_results)
-                max_results = max(1, min(max_results, 10))  # Clamp between 1-10
+                max_results = max(1, min(max_results, 50))  # Clamp between 1-50
             except (ValueError, TypeError):
                 max_results = 10
             
-            result = search_papers(topic, max_results)
+            date_from = arguments.get("date_from")
+            categories = arguments.get("categories")
             
-            # Validate result
-            if result is None:
-                result = []
-            elif not isinstance(result, list):
-                result = [str(result)] if result else []
+            result = search_papers(query, max_results, date_from, categories)
             
             return {
                 "success": True,
                 "function": function_name,
                 "result": result,
-                "summary": f"Found {len(result)} papers on '{topic}'"
+                "summary": f"Found {len(result)} papers for query '{query}'"
             }
             
-        elif function_name == "extract_info":
+        elif function_name == "download_paper":
             paper_id = arguments.get("paper_id")
             if not paper_id or not isinstance(paper_id, str):
                 return {
@@ -578,76 +513,68 @@ def execute_function_call(function_name: str, arguments: dict):
                     "error": "Paper ID parameter is required and must be a string"
                 }
             
-            result = extract_info(paper_id)
-            if not result or (isinstance(result, dict) and "error" in result):
-                error_msg = result.get("error", "Failed to retrieve paper information") if isinstance(result, dict) else "Failed to retrieve paper information"
+            result = download_paper(paper_id)
+            if "error" in result:
                 return {
                     "success": False,
                     "function": function_name,
-                    "error": error_msg
+                    "error": result["error"]
                 }
             return {
                 "success": True,
                 "function": function_name,
                 "result": result,
-                "summary": f"Retrieved details for paper {paper_id}"
+                "summary": f"Downloaded paper {paper_id}"
             }
             
-        elif function_name == "get_topic_papers":
-            topic = arguments.get("topic")
-            if not topic or not isinstance(topic, str):
+        elif function_name == "list_papers":
+            result = list_papers()
+            
+            return {
+                "success": True,
+                "function": function_name,
+                "result": result,
+                "summary": f"Found {len(result)} downloaded papers"
+            }
+            
+        elif function_name == "read_paper":
+            paper_id = arguments.get("paper_id")
+            if not paper_id or not isinstance(paper_id, str):
                 return {
                     "success": False,
                     "function": function_name,
-                    "error": "Topic parameter is required and must be a string"
+                    "error": "Paper ID parameter is required and must be a string"
                 }
             
-            result = get_topic_papers(topic)
-            if result is None:
-                result = []
-            elif not isinstance(result, list):
-                result = []
-            
-            return {
-                "success": True,
-                "function": function_name,
-                "result": result,
-                "summary": f"Found {len(result)} saved papers for topic '{topic}'"
-            }
-            
-        elif function_name == "get_available_folders":
-            result = get_available_folders()
-            if result is None:
-                result = []
-            elif not isinstance(result, list):
-                result = []
-            
-            return {
-                "success": True,
-                "function": function_name,
-                "result": result,
-                "summary": f"Found {len(result)} available research topics"
-            }
-            
-        elif function_name == "get_research_prompt":
-            topic = arguments.get("topic")
-            if not topic or not isinstance(topic, str):
+            result = read_paper(paper_id)
+            if "error" in result:
                 return {
                     "success": False,
                     "function": function_name,
-                    "error": "Topic parameter is required and must be a string"
+                    "error": result["error"]
                 }
-            
-            num_papers = arguments.get("num_papers", 10)
-            if not isinstance(num_papers, int) or num_papers < 1:
-                num_papers = 10
-            
-            result = get_research_prompt(topic, num_papers)
             return {
                 "success": True,
                 "function": function_name,
                 "result": result,
-                "summary": f"Generated comprehensive research prompt for '{topic}' with {num_papers} papers"
+                "summary": f"Read content of paper {paper_id}"
+            }
+            
+        elif function_name == "get_deep_paper_analysis":
+            paper_id = arguments.get("paper_id")
+            if not paper_id or not isinstance(paper_id, str):
+                return {
+                    "success": False,
+                    "function": function_name,
+                    "error": "Paper ID parameter is required and must be a string"
+                }
+            
+            result = get_deep_paper_analysis(paper_id)
+            return {
+                "success": True,
+                "function": function_name,
+                "result": result,
+                "summary": f"Generated comprehensive analysis for paper {paper_id}"
             }
             
         else:
@@ -671,7 +598,7 @@ def execute_function_call(function_name: str, arguments: dict):
 
 def get_llama_reply(messages: list, enable_tools: bool = True, update=None) -> str:
     """
-    Enhanced LLama reply function with function calling support.
+    Enhanced LLama reply function with function calling support for the new arXiv MCP tools.
     Animation is triggered when tools are actually called.
     """
     try:
@@ -679,8 +606,10 @@ def get_llama_reply(messages: list, enable_tools: bool = True, update=None) -> s
         
         # Prepare the API call parameters
         api_params = {
-            "model": "llama-3.1-8b-instant",
-            "messages": messages
+            "model": "llama-3.1-70b-versatile",
+            "messages": messages,
+            "temperature": 0.7,
+            "max_tokens": 2048
         }
         
         # Add tools if enabled
@@ -688,58 +617,41 @@ def get_llama_reply(messages: list, enable_tools: bool = True, update=None) -> s
             api_params["tools"] = MCP_TOOLS
             api_params["tool_choice"] = "auto"
         
-        completion = client.chat.completions.create(**api_params)
-        message = completion.choices[0].message
+        # Make the API call
+        response = client.chat.completions.create(**api_params)
         
-        # Check if the model wants to call functions
-        if message.tool_calls:
-            total_tools = len(message.tool_calls)
-            print(f"LLama wants to call {total_tools} function(s)")
-            
-            # Add the assistant's message with tool calls to conversation
-            messages.append({
-                "role": "assistant",
-                "content": message.content,
-                "tool_calls": [{
-                    "id": tool_call.id,
-                    "type": "function",
-                    "function": {
-                        "name": tool_call.function.name,
-                        "arguments": tool_call.function.arguments
-                    }
-                } for tool_call in message.tool_calls]
-            })
-            
-            # Execute each tool call with progressive feedback
-            success_count = 0
-            for i, tool_call in enumerate(message.tool_calls, 1):
+        # Handle tool calls if present
+        if response.choices[0].message.tool_calls:
+            # Process each tool call
+            for tool_call in response.choices[0].message.tool_calls:
                 function_name = tool_call.function.name
-                try:
-                    arguments = json.loads(tool_call.function.arguments)
-                except json.JSONDecodeError:
-                    arguments = {}
+                function_args = json.loads(tool_call.function.arguments)
                 
-                # Send starting status
+                print(f"LLama is calling function: {function_name} with args: {function_args}")
+                
+                # Send animated search message if update is available
                 if update:
-                    details = f"({i}/{total_tools})"
-                    if arguments.get('topic'):
-                        details += f" for '{arguments['topic']}'"
-                    elif arguments.get('paper_id'):
-                        details += f" for paper {arguments['paper_id']}"
-                    send_progressive_research_update(update, function_name, 'starting', details)
+                    try:
+                        update.message.reply_text(f"🔍 Searching research papers using {function_name}...")
+                    except:
+                        pass
                 
-                # Execute the function
-                function_result = execute_function_call(function_name, arguments)
+                # Execute the function call
+                function_result = execute_function_call(function_name, function_args)
                 
-                # Send completion status
-                if update:
-                    if function_result.get('success'):
-                        success_count += 1
-                        result_details = function_result.get('summary', 'completed successfully')
-                        send_progressive_research_update(update, function_name, 'completed', result_details)
-                    else:
-                        error_msg = function_result.get('error', 'unknown error')
-                        send_progressive_research_update(update, function_name, 'completed', f"Error: {error_msg}")
+                # Add the assistant's tool call message to conversation
+                messages.append({
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [{
+                        "id": tool_call.id,
+                        "type": "function",
+                        "function": {
+                            "name": function_name,
+                            "arguments": tool_call.function.arguments
+                        }
+                    }]
+                })
                 
                 # Add the function result to conversation
                 messages.append({
@@ -748,637 +660,26 @@ def get_llama_reply(messages: list, enable_tools: bool = True, update=None) -> s
                     "content": json.dumps(function_result)
                 })
             
-            # Get the final response from the model with function results
-            final_completion = client.chat.completions.create(
-                model="llama-3.1-8b-instant",
-                messages=messages
+            # Make another API call to get the final response
+            final_response = client.chat.completions.create(
+                model="llama-3.1-70b-versatile",
+                messages=messages,
+                temperature=0.7,
+                max_tokens=2048
             )
             
-            # Send final completion message
-            if update:
-                finalize_research_feedback(update, total_tools, success_count)
-            
-            final_response = final_completion.choices[0].message.content
-            
-            # Validate final response
-            if not final_response or not final_response.strip():
-                return "I found some research results but had trouble formatting the response. Please try asking your question again."
-            
-            # Format thinking tags nicely
-            return format_deepseek_thinking(final_response)
-        
-        # No function calls, return regular response
-        response = message.content
-        
-        # Validate regular response
-        if not response or not response.strip():
-            return "I'm having trouble generating a response right now. Please try asking your question again."
-            
-        # Format thinking tags nicely
-        return format_deepseek_thinking(response)
-        
-    except Exception as e:
-        error_str = str(e)
-        print(f"Error in get_llama_reply: {error_str}")
-        
-        # Handle function calling errors
-        if "tool_use_failed" in error_str or "Failed to call a function" in error_str:
-            return "I tried to search for research information but encountered a technical issue with the function calling system. Please try rephrasing your question or ask me something else."
-        
-        # Handle token limit errors
-        if "413" in error_str and "Request too large" in error_str:
-            return "⚠️ Your conversation history is too long for the model's token limit. Please use /reset to start a new conversation, or ask a shorter question."
-        
-        return f"⚠️ Error from Groq API: {error_str}"
-
-# Global dictionary to track progressive research feedback states
-animation_states = {}
-
-def send_progressive_research_update(update, tool_name, status, details=None):
-    """
-    Send progressive research feedback with specific tool status updates
-    """
-    if update is None:
-        return
-    
-    # Handle different input types
-    if hasattr(update, 'effective_chat'):
-        chat_id = update.effective_chat.id
-        bot = update.effective_chat.bot
-    elif isinstance(update, int):
-        chat_id = update
-        bot = TELEGRAM_BOT
-        if not bot:
-            return
-    else:
-        return
-    
-    # Tool-specific status messages
-    tool_messages = {
-        'search_papers': {
-            'starting': '🔍 Searching ArXiv papers',
-            'processing': '📄 Analyzing search results',
-            'completed': '✅ Found papers'
-        },
-        'extract_info': {
-            'starting': '📋 Extracting paper details',
-            'processing': '🔬 Analyzing paper content',
-            'completed': '✅ Paper information extracted'
-        },
-        'get_topic_papers': {
-            'starting': '📚 Loading saved papers',
-            'processing': '📖 Organizing paper collection',
-            'completed': '✅ Papers loaded'
-        },
-        'get_available_folders': {
-            'starting': '📁 Scanning research topics',
-            'processing': '🗂️ Organizing topic list',
-            'completed': '✅ Topics loaded'
-        },
-        'get_research_prompt': {
-            'starting': '💡 Generating research prompt',
-            'processing': '✍️ Structuring research guidance',
-            'completed': '✅ Research prompt ready'
-        }
-    }
-    
-    # Get appropriate message
-    tool_msgs = tool_messages.get(tool_name, {
-        'starting': f'🔧 Executing {tool_name}',
-        'processing': f'⚙️ Processing {tool_name}',
-        'completed': f'✅ {tool_name} completed'
-    })
-    
-    base_message = tool_msgs.get(status, f'🔧 {tool_name}: {status}')
-    
-    # Add details if provided
-    if details:
-        message = f"{base_message} - {details}"
-    else:
-        message = base_message
-    
-    # Update existing animation message if active
-    if chat_id in animation_states and animation_states[chat_id].get('active'):
-        try:
-            message_id = animation_states[chat_id]['message_id']
-            bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=message_id,
-                text=message
-            )
-        except Exception as e:
-            print(f"Failed to update progressive message: {e}")
-    else:
-        # Send new message if no animation is active
-        try:
-            sent_message = bot.send_message(chat_id=chat_id, text=message)
-            animation_states[chat_id] = {
-                'active': True,
-                'message_id': sent_message.message_id
-            }
-        except Exception as e:
-            print(f"Failed to send progressive message: {e}")
-
-def finalize_research_feedback(update, total_tools, success_count):
-    """
-    Send final research completion message
-    """
-    if update is None:
-        return
-    
-    # Handle different input types
-    if hasattr(update, 'effective_chat'):
-        chat_id = update.effective_chat.id
-        bot = update.effective_chat.bot
-    elif isinstance(update, int):
-        chat_id = update
-        bot = TELEGRAM_BOT
-        if not bot:
-            return
-    else:
-        return
-    
-    # Create completion message
-    if success_count == total_tools:
-        final_message = f"🎉 Research complete! Successfully executed {success_count} research operations."
-    else:
-        final_message = f"⚠️ Research completed with {success_count}/{total_tools} successful operations."
-    
-    # Update the animation message with final status
-    if chat_id in animation_states and animation_states[chat_id].get('active'):
-        try:
-            message_id = animation_states[chat_id]['message_id']
-            bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=message_id,
-                text=final_message
-            )
-            # Mark animation as completed
-            animation_states[chat_id]['active'] = False
-        except Exception as e:
-            print(f"Failed to finalize research message: {e}")
-
-def clean_markdown_formatting(text: str) -> str:
-    """
-    Remove asterisks, double asterisks, and backticks from text for cleaner Telegram display
-    """
-    import re
-    
-    # Remove markdown formatting
-    # Remove bold (**text**)
-    text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
-    # Remove italic (*text*)
-    text = re.sub(r'\*(.*?)\*', r'\1', text)
-    # Remove code blocks (```text```)
-    text = re.sub(r'```[^\n]*\n(.*?)\n```', r'\1', text, flags=re.DOTALL)
-    # Remove inline code (`text`)
-    text = re.sub(r'`(.*?)`', r'\1', text)
-    
-    return text
-
-def format_deepseek_thinking(text: str) -> str:
-    """
-    Format Deepseek's <think>...</think> tags nicely for Telegram display
-    """
-    import re
-    
-    # Pattern to match <think>...</think> tags
-    think_pattern = r'<think>(.*?)</think>'
-    
-    def replace_think_tags(match):
-        thinking_content = match.group(1).strip()
-        # Clean markdown from thinking content
-        thinking_content = clean_markdown_formatting(thinking_content)
-        # Format as a nice section with emoji (no markdown)
-        return f"\n🤔 Thinking Process:\n{thinking_content}\n"
-    
-    # Replace all <think>...</think> tags with formatted versions
-    formatted_text = re.sub(think_pattern, replace_think_tags, text, flags=re.DOTALL)
-    
-    # Clean remaining markdown from the rest of the text
-    formatted_text = clean_markdown_formatting(formatted_text)
-    
-    return formatted_text
-
-
-
-def send_interactive_hints(update, response: str, tools_used: list = None):
-    """
-    Send three useful buttons for simple research navigation.
-    """
-    user_id = update.effective_user.id
-    
-    # Create three useful buttons
-    keyboard = [
-        [InlineKeyboardButton("📁 Browse More Topics", callback_data=f"simple_browse_{user_id}")],
-        [InlineKeyboardButton("📚 Saved Papers", callback_data=f"simple_saved_{user_id}")],
-        [InlineKeyboardButton("🔍 Search Different Topic", callback_data=f"simple_search_{user_id}")]
-    ]
-    
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    # Simple message
-    message_text = "💡 What would you like to do next?"
-    
-    # Send message with simple navigation buttons
-    send_telegram_message(
-        update, 
-        message_text, 
-        reply_markup=reply_markup
-    )
-
-def generate_button_labels_from_hints(hints: list) -> list:
-    """
-    Generate button labels from hint questions using LLM.
-    """
-    if not hints:
-        return []
-    
-    try:
-        client = Groq()
-        
-        prompt = """Generate concise button labels (max 20 chars each) for these follow-up questions:
-
-{}
-
-Format as a list, one label per line. Make each label actionable and specific to the question content. Include relevant emojis."""
-        
-        completion = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=[
-                {"role": "system", "content": "You are a UX expert that creates concise, actionable button labels for research questions."},
-                {"role": "user", "content": prompt.format('\n'.join(hints))}
-            ],
-            max_tokens=150,
-            temperature=0.7
-        )
-        
-        response = completion.choices[0].message.content
-        if not response:
-            return generate_fallback_button_labels(hints)
-        
-        # Parse labels from response
-        labels = []
-        for line in response.strip().split('\n'):
-            line = line.strip()
-            if line:
-                # Remove any numbering or bullets
-                line = line.lstrip('1234567890.- ')
-                labels.append(line[:25])  # Limit length
-        
-        return labels[:len(hints)]  # Match number of hints
-        
-    except Exception as e:
-        print(f"Error generating button labels: {e}")
-        return generate_fallback_button_labels(hints)
-
-def generate_fallback_button_labels(hints: list) -> list:
-    """
-    Fallback button labels when LLM generation fails.
-    """
-    fallback_labels = [
-        "🔍 Explore More",
-        "📚 Deep Dive", 
-        "🔬 Research",
-        "💡 Learn More",
-        "🚀 Next Steps"
-    ]
-    
-    labels = []
-    for i, hint in enumerate(hints):
-        if i < len(fallback_labels):
-            labels.append(fallback_labels[i])
+            return final_response.choices[0].message.content
         else:
-            labels.append(f"🔍 Option {i+1}")
-    
-    return labels
-
-def generate_onboarding_research_terms():
-    """
-    Generate truly random and varied trending research terms for new users to explore.
-    """
-    import random
-    import time
-    
-    try:
-        client = Groq()
-        
-        # Random prompt variations for proper research field names - EXACTLY TWO WORDS ONLY
-        prompt_styles = [
-            "Generate 4-5 real research field names using EXACTLY TWO WORDS each. Use ADJECTIVE + NOUN format like: 'Quantum Biology', 'Digital Archaeology', 'Urban Ecology'. Make them sound like actual academic disciplines!",
-            "Create 4-5 interdisciplinary research field names using EXACTLY TWO WORDS each. Format: ADJECTIVE + SCIENCE like 'Computational Linguistics', 'Behavioral Economics', 'Environmental Psychology'.",
-            "Suggest 4-5 emerging research areas using EXACTLY TWO WORDS each. Use patterns like 'Marine Biology', 'Space Medicine', 'Cognitive Neuroscience'. Sound academic and professional!",
-            "Generate 4-5 scientific field names using EXACTLY TWO WORDS each. Examples: 'Molecular Gastronomy', 'Forensic Anthropology', 'Synthetic Biology'. Make them real-sounding disciplines!",
-            "Create 4-5 academic research areas using EXACTLY TWO WORDS each. Use formats like 'Applied Mathematics', 'Social Robotics', 'Theoretical Physics'. Sound like university departments!"
-        ]
-        
-        # Random research domains to inspire variety
-        domain_hints = [
-            "neuroscience, archaeology, materials science, linguistics",
-            "marine biology, urban planning, cryptography, psychology", 
-            "astrophysics, anthropology, robotics, economics",
-            "genetics, philosophy, nanotechnology, sociology",
-            "ecology, computer vision, history, chemistry",
-            "geology, artificial intelligence, literature, medicine"
-        ]
-        
-        # Randomly select prompt style and domain hint
-        selected_prompt = random.choice(prompt_styles)
-        selected_domains = random.choice(domain_hints)
-        
-        # Add timestamp for uniqueness
-        timestamp_seed = int(time.time()) % 1000
-        
-        full_prompt = f"""{selected_prompt}
-
-Consider diverse areas like: {selected_domains}
-
-Format as simple topic names, one per line.
-Examples: "Quantum Archaeology", "Urban Mycology", "Computational Linguistics"
-Make each topic name specific and intriguing.
-Avoid common topics like basic AI or climate change.
-
-Seed: {timestamp_seed}"""
-        
-        completion = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=[
-                {"role": "system", "content": "You are a creative research curator who discovers unique and surprising research topics from all fields of knowledge. Be unpredictable and diverse."},
-                {"role": "user", "content": full_prompt}
-            ],
-            max_tokens=250,
-            temperature=1.0  # Maximum creativity
-        )
-        
-        response = completion.choices[0].message.content
-        if not response:
-            return []
-        
-        # Parse topic names from response
-        topics = []
-        for line in response.strip().split('\n'):
-            line = line.strip()
-            # Remove any numbering, bullets, or quotes
-            line = line.lstrip('1234567890.- *#"').rstrip('"')
-            if line and len(line) > 3:  # Only include substantial topic names
-                topics.append(line)
-        
-        return topics[:5]  # Limit to 5 topics
-        
+            # No tool calls, return the regular response
+            return response.choices[0].message.content
+            
     except Exception as e:
-        print(f"Error generating onboarding terms: {e}")
-        # Random fallback topic names - proper academic field names
-        import random
-        fallback_pools = [
-            ["Quantum Biology", "Digital Archaeology", "Urban Ecology", "Cognitive Robotics"],
-            ["Marine Genomics", "Space Medicine", "Computational Linguistics", "Behavioral Economics"],
-            ["Synthetic Biology", "Environmental Psychology", "Molecular Gastronomy", "Forensic Anthropology"],
-            ["Social Robotics", "Theoretical Physics", "Applied Mathematics", "Cultural Neuroscience"],
-            ["Biomimetic Engineering", "Planetary Geology", "Comparative Literature", "Experimental Philosophy"]
-        ]
-        return random.choice(fallback_pools)
-
-def generate_onboarding_button_labels(questions: list) -> list:
-    """
-    Generate button labels for onboarding research topics using LLM.
-    """
-    try:
-        client = Groq()
-        
-        prompt = """Create button labels for these research questions. Return ONLY the labels, one per line, no explanations:
-
-{}
-
-Requirements:
-- Max 30 characters each
-- Include relevant emoji
-- Be specific and actionable
-- No introductory text or explanations"""
-        
-        completion = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=[
-                {"role": "system", "content": "You create concise button labels. Return ONLY the labels, one per line. No explanations, no introductory text, no formatting."},
-                {"role": "user", "content": prompt.format('\n'.join(questions))}
-            ],
-            max_tokens=150,
-            temperature=0.7
-        )
-        
-        response = completion.choices[0].message.content
-        if not response:
-            return generate_onboarding_fallback_labels(questions)
-        
-        # Parse labels from response with better filtering
-        labels = []
-        for line in response.strip().split('\n'):
-            line = line.strip()
-            if line and not line.lower().startswith(('here', 'the', 'labels', 'button')):
-                # Remove any numbering, bullets, or markdown formatting
-                line = line.lstrip('1234567890.- *#')
-                line = line.replace('**', '').replace('*', '')
-                if len(line) > 3:  # Only include substantial labels
-                    labels.append(line[:35])  # Limit length for mobile
-        
-        # Ensure we have labels for all questions
-        while len(labels) < len(questions):
-            labels.append(f"🔬 Research Topic {len(labels)+1}")
-        
-        return labels[:len(questions)]  # Match number of questions
-        
-    except Exception as e:
-        print(f"Error generating onboarding button labels: {e}")
-        return generate_onboarding_fallback_labels(questions)
-
-def generate_onboarding_fallback_labels(questions: list) -> list:
-    """
-    Fallback button labels for onboarding when LLM generation fails.
-    """
-    fallback_labels = [
-        "🤖 AI Research",
-        "⚛️ Quantum Tech", 
-        "🧬 Biotech",
-        "🌍 Climate Science",
-        "🚀 Space Tech",
-        "💡 Innovation",
-        "🔬 Science"
-    ]
-    
-    labels = []
-    for i in range(len(questions)):
-        if i < len(fallback_labels):
-            labels.append(fallback_labels[i])
-        else:
-            labels.append(f"🔬 Topic {i+1}")
-    
-    return labels
-
-def send_onboarding_research_suggestions(update):
-    """
-    Send trending research topics as clickable buttons for new users.
-    """
-    # Generate trending research questions
-    research_questions = generate_onboarding_research_terms()
-    
-    if not research_questions:
-        send_telegram_message(update, "Welcome! Start by asking me any research question.")
-        return
-    
-    keyboard = []
-    user_id = update.effective_user.id
-    
-    # Generate button labels using LLM
-    button_labels = generate_onboarding_button_labels(research_questions)
-    
-    for i, (question, button_text) in enumerate(zip(research_questions, button_labels)):
-        callback_data = f"onboard_{i}_{user_id}"
-        keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
-    
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    # Send message with trending research topics
-    send_telegram_message(
-        update,
-        "🔥 Trending Research Topics - Click to explore:",
-        reply_markup=reply_markup
-    )
-    
-    # Store onboarding questions in user data for callback handling
-    udata = get_user_data(user_id)
-    udata['onboarding_questions'] = research_questions
-
-def handle_hint_callback(update, context):
-    """
-    Handle callback when user clicks on interactive buttons.
-    Simplified to work with topic names instead of questions.
-    """
-    query = update.callback_query
-    query.answer()  # Acknowledge the callback
-    
-    callback_data = query.data
-    
-    # Handle separator buttons (do nothing)
-    if callback_data == "separator":
-        return
-    
-    if callback_data.startswith('simple_'):
-        # Handle simple navigation buttons
-        parts = callback_data.split('_')
-        if len(parts) >= 3:
-            action = parts[1]
-            user_id = int(parts[2])
-            
-            if action == 'browse':
-                # Browse More Topics
-                try:
-                    folders = get_available_folders()
-                    if folders:
-                        response = "📁 **Available Research Topics:**\n\n"
-                        for i, folder in enumerate(folders[:10], 1):
-                            topic_display = folder.replace('_', ' ').title()
-                            response += f"{i}. {topic_display}\n"
-                        response += "\n💡 Click any research topic button to explore papers in that area."
-                    else:
-                        response = "❌ No research topics found. Try searching for papers first."
-                    query.message.reply_text(response, parse_mode='Markdown')
-                except Exception as e:
-                    query.message.reply_text(f"❌ Error loading topics: {str(e)}")
-                    
-            elif action == 'saved':
-                # Saved Papers
-                try:
-                    folders = get_available_folders()
-                    if folders:
-                        response = "📚 **Saved Papers by Topic:**\n\n"
-                        for i, folder in enumerate(folders[:10], 1):
-                            topic_display = folder.replace('_', ' ').title()
-                            try:
-                                papers = get_topic_papers(folder)
-                                paper_count = len(papers) if papers else 0
-                                response += f"{i}. {topic_display} ({paper_count} papers)\n"
-                            except:
-                                response += f"{i}. {topic_display}\n"
-                        response += "\n💡 Use `/papers <topic>` to see papers in any topic."
-                    else:
-                        response = "❌ No saved papers found. Search for papers first to build your collection."
-                    query.message.reply_text(response, parse_mode='Markdown')
-                except Exception as e:
-                    query.message.reply_text(f"❌ Error loading saved papers: {str(e)}")
-                    
-            elif action == 'search':
-                # Search Different Topic
-                prompt = "🔍 **Search for Papers**\n\nType `/search <topic>` to find papers on any research topic.\n\nExample: `/search machine learning`"
-                query.message.reply_text(prompt, parse_mode='Markdown')
-        
-    elif callback_data.startswith('hint_') or callback_data.startswith('onboard_'):
-        # Handle topic button clicks (both onboarding and regular hints)
-        parts = callback_data.split('_')
-        if len(parts) >= 3:
-            hint_index = int(parts[1])
-            user_id = int(parts[2])
-            
-            udata = get_user_data(user_id)
-            
-            if callback_data.startswith('onboard_'):
-                topics = udata.get('onboarding_questions', [])
-            else:
-                topics = udata.get('current_hints', [])
-            
-            if hint_index < len(topics):
-                # Topic is now a simple name (e.g., "Quantum Computing")
-                topic = topics[hint_index].strip()
-                
-                # Execute direct search using the topic name
-                try:
-                    paper_ids = search_papers(topic, 10)
-                    
-                    if paper_ids:
-                        response = f"📚 **Recent papers on {topic}:**\n\n"
-                        
-                        for i, paper_id in enumerate(paper_ids[:10], 1):
-                            try:
-                                paper_info = extract_info(paper_id)
-                                if isinstance(paper_info, dict) and 'error' not in paper_info:
-                                    title = paper_info.get('title', 'Unknown Title')[:80] + ('...' if len(paper_info.get('title', '')) > 80 else '')
-                                    authors = ', '.join(paper_info.get('authors', [])[:2])
-                                    if len(paper_info.get('authors', [])) > 2:
-                                        authors += ' et al.'
-                                    
-                                    published = paper_info.get('published', 'Unknown')
-                                    pdf_url = paper_info.get('pdf_url', '')
-                                    
-                                    response += f"{i}. **{title}**\n"
-                                    response += f"   Authors: {authors} ({published})\n"
-                                    if pdf_url:
-                                        response += f"   [📄 PDF]({pdf_url})\n"
-                                    response += f"\n"
-                                else:
-                                    response += f"{i}. Paper ID: `{paper_id}`\n\n"
-                            except Exception:
-                                response += f"{i}. Paper ID: `{paper_id}`\n\n"
-                    else:
-                        response = f"❌ No papers found for '{topic}'. Try a different research area."
-                    
-                    # Use send_telegram_message to properly handle long messages and disable link previews
-                    # Create a fake update object for send_telegram_message
-                    class FakeMessage:
-                        def reply_text(self, text, parse_mode=None, reply_markup=None):
-                            query.message.reply_text(text, parse_mode=parse_mode, reply_markup=reply_markup, disable_web_page_preview=True)
-                    
-                    class FakeUpdate:
-                        def __init__(self):
-                            self.message = FakeMessage()
-                    
-                    fake_update = FakeUpdate()
-                    send_telegram_message(fake_update, response)
-                    
-                except Exception as e:
-                    query.message.reply_text(f"❌ Error searching for papers on '{topic}': {str(e)}", disable_web_page_preview=True)
-                    llama_command(fake_update, fake_context)
+        print(f"Error getting LLama reply: {e}")
+        return f"Sorry, I encountered an error: {str(e)}"
 
 def get_deepseek_reply(messages: list, enable_tools: bool = True, update=None) -> str:
     """
-    Enhanced Deepseek reply function with function calling support.
+    Enhanced Deepseek reply function with function calling support for the new arXiv MCP tools.
     Animation is triggered when tools are actually called.
     """
     try:
@@ -1387,7 +688,9 @@ def get_deepseek_reply(messages: list, enable_tools: bool = True, update=None) -
         # Prepare the API call parameters
         api_params = {
             "model": "deepseek-r1-distill-llama-70b",
-            "messages": messages
+            "messages": messages,
+            "temperature": 0.7,
+            "max_tokens": 2048
         }
         
         # Add tools if enabled
@@ -1395,66 +698,41 @@ def get_deepseek_reply(messages: list, enable_tools: bool = True, update=None) -
             api_params["tools"] = MCP_TOOLS
             api_params["tool_choice"] = "auto"
         
-        completion = client.chat.completions.create(**api_params)
-        message = completion.choices[0].message
+        # Make the API call
+        response = client.chat.completions.create(**api_params)
         
-        # Check if the model wants to call functions
-        if message.tool_calls:
-            total_tools = len(message.tool_calls)
-            print(f"Deepseek wants to call {total_tools} function(s)")
-            
-            # Add the assistant's message with tool calls to conversation
-            messages.append({
-                "role": "assistant",
-                "content": message.content,
-                "tool_calls": [{
-                    "id": tool_call.id,
-                    "type": "function",
-                    "function": {
-                        "name": tool_call.function.name,
-                        "arguments": tool_call.function.arguments
-                    }
-                } for tool_call in message.tool_calls]
-            })
-            
-            # Execute each tool call with progressive feedback
-            success_count = 0
-            for i, tool_call in enumerate(message.tool_calls, 1):
+        # Handle tool calls if present
+        if response.choices[0].message.tool_calls:
+            # Process each tool call
+            for tool_call in response.choices[0].message.tool_calls:
                 function_name = tool_call.function.name
-                try:
-                    arguments = json.loads(tool_call.function.arguments)
-                except json.JSONDecodeError:
-                    arguments = {}
+                function_args = json.loads(tool_call.function.arguments)
                 
-                # Send starting status
+                print(f"Deepseek is calling function: {function_name} with args: {function_args}")
+                
+                # Send animated search message if update is available
                 if update:
-                    details = f"({i}/{total_tools})"
-                    if arguments.get('topic'):
-                        details += f" for '{arguments['topic']}'"
-                    elif arguments.get('paper_id'):
-                        details += f" for paper {arguments['paper_id']}"
-                    send_progressive_research_update(update, function_name, 'starting', details)
+                    try:
+                        update.message.reply_text(f"🔍 Searching research papers using {function_name}...")
+                    except:
+                        pass
                 
-                # Execute the function
-                function_result = execute_function_call(function_name, arguments)
+                # Execute the function call
+                function_result = execute_function_call(function_name, function_args)
                 
-                # Handle case where function_result is None
-                if function_result is None:
-                    function_result = {
-                        "success": False,
-                        "function": function_name,
-                        "error": "Function call returned None"
-                    }
-                
-                # Send completion status
-                if update:
-                    if function_result.get('success'):
-                        success_count += 1
-                        result_details = function_result.get('summary', 'completed successfully')
-                        send_progressive_research_update(update, function_name, 'completed', result_details)
-                    else:
-                        error_msg = function_result.get('error', 'unknown error')
-                        send_progressive_research_update(update, function_name, 'completed', f"Error: {error_msg}")
+                # Add the assistant's tool call message to conversation
+                messages.append({
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [{
+                        "id": tool_call.id,
+                        "type": "function",
+                        "function": {
+                            "name": function_name,
+                            "arguments": tool_call.function.arguments
+                        }
+                    }]
+                })
                 
                 # Add the function result to conversation
                 messages.append({
@@ -1463,64 +741,153 @@ def get_deepseek_reply(messages: list, enable_tools: bool = True, update=None) -
                     "content": json.dumps(function_result)
                 })
             
-            # Get the final response from the model with function results
-            final_completion = client.chat.completions.create(
+            # Make another API call to get the final response
+            final_response = client.chat.completions.create(
                 model="deepseek-r1-distill-llama-70b",
-                messages=messages
+                messages=messages,
+                temperature=0.7,
+                max_tokens=2048
             )
             
-            # Send final completion message
-            if update:
-                finalize_research_feedback(update, total_tools, success_count)
+            # Format Deepseek thinking tags if present
+            content = final_response.choices[0].message.content
+            if content and "<think>" in content:
+                content = format_deepseek_thinking(content)
             
-            final_response = final_completion.choices[0].message.content
+            return content
+        else:
+            # No tool calls, return the regular response
+            content = response.choices[0].message.content
+            if content and "<think>" in content:
+                content = format_deepseek_thinking(content)
+            return content
             
-            # Validate final response
-            if not final_response or not final_response.strip():
-                return "I found some research results but had trouble formatting the response. Please try asking your question again."
-            
-            # Format thinking tags nicely
-            return format_deepseek_thinking(final_response)
-        
-        # No function calls, return regular response
-        response = message.content
-        
-        # Validate regular response
-        if not response or not response.strip():
-            return "I'm having trouble generating a response right now. Please try asking your question again."
-            
-        # Format thinking tags nicely
-        return format_deepseek_thinking(response)
-        
     except Exception as e:
-        error_str = str(e)
-        print(f"Error in get_deepseek_reply: {error_str}")
+        print(f"Error getting Deepseek reply: {e}")
+        return f"Sorry, I encountered an error: {str(e)}"
+
+# Global dictionary to track progressive research feedback states
+animation_states = {}
+
+def send_progressive_research_update(update, tool_name, status, details=None):
+    """
+    Send progressive research feedback with specific tool status updates
+    """
+    user_id = update.effective_user.id
+    
+    # Initialize animation state if not exists
+    if user_id not in animation_states:
+        animation_states[user_id] = {
+            'active': False,
+            'tools_called': [],
+            'current_tool': None
+        }
+    
+    state = animation_states[user_id]
+    
+    if status == "start":
+        state['active'] = True
+        state['current_tool'] = tool_name
+        if tool_name not in state['tools_called']:
+            state['tools_called'].append(tool_name)
         
-        # Handle function calling errors
-        if "tool_use_failed" in error_str or "Failed to call a function" in error_str:
-            return "I tried to search for research information but encountered a technical issue with the function calling system. Please try rephrasing your question or ask me something else."
+        # Send tool-specific start message
+        tool_messages = {
+            "search_papers": "🔍 Searching arXiv papers...",
+            "download_paper": "📥 Downloading paper...",
+            "list_papers": "📋 Listing downloaded papers...",
+            "read_paper": "📖 Reading paper content...",
+            "get_deep_paper_analysis": "🧠 Generating deep analysis..."
+        }
         
-        # Handle token limit errors
-        if "413" in error_str and "Request too large" in error_str:
-            return "⚠️ Your conversation history is too long for the model's token limit. Please use /reset to start a new conversation, or ask a shorter question."
+        message = tool_messages.get(tool_name, f"🔧 Using {tool_name}...")
+        if details:
+            message += f" {details}"
+            
+        try:
+            update.message.reply_text(message)
+        except:
+            pass
+    
+    elif status == "complete":
+        state['current_tool'] = None
         
-        return f"⚠️ Error from Groq API: {error_str}"
+        # Send completion message
+        try:
+            if details:
+                update.message.reply_text(f"✅ {details}")
+        except:
+            pass
+
+def finalize_research_feedback(update, total_tools, success_count):
+    """
+    Send final research completion message
+    """
+    user_id = update.effective_user.id
+    
+    if user_id in animation_states:
+        animation_states[user_id]['active'] = False
+        animation_states[user_id]['current_tool'] = None
+    
+    if total_tools > 0:
+        try:
+            if success_count == total_tools:
+                update.message.reply_text(f"🎉 Research complete! Successfully used {success_count} tools.")
+            else:
+                update.message.reply_text(f"⚠️ Research complete with {success_count}/{total_tools} tools successful.")
+        except:
+            pass
+
+def clean_markdown_formatting(text: str) -> str:
+    """
+    Remove asterisks, double asterisks, and backticks from text for cleaner Telegram display
+    """
+    if not text:
+        return text
+    
+    # Remove markdown formatting
+    text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)  # Remove **bold**
+    text = re.sub(r'\*(.*?)\*', r'\1', text)      # Remove *italic*
+    text = re.sub(r'`(.*?)`', r'\1', text)        # Remove `code`
+    text = re.sub(r'```(.*?)```', r'\1', text, flags=re.DOTALL)  # Remove ```code blocks```
+    
+    return text
+
+def format_deepseek_thinking(text: str) -> str:
+    """
+    Format Deepseek's <think>...</think> tags nicely for Telegram display
+    """
+    if not text:
+        return text
+    
+    # Replace <think> tags with emoji sections
+    text = re.sub(r'<think>', '🤔 **Thinking:**\n', text)
+    text = re.sub(r'</think>', '\n\n💡 **Response:**\n', text)
+    
+    return text
 
 # ============================================================================
 # TELEGRAM BOT FUNCTIONALITY
 # ============================================================================
 
+# Global user data storage
+user_data = {}
+
 def get_user_data(user_id):
+    """Get or initialize user data for a given user ID"""
     if user_id not in user_data:
         user_data[user_id] = {
             'llama_history': [],
             'deepseek_history': [],
             'last_model': None,
-            'auto_research': True  # Default to enabled
+            'auto_research': True,  # Default to enabled
+            'conversation_mode': 'none'  # 'llama', 'deepseek', or 'none'
         }
-    # Ensure auto_research setting exists for existing users
+    # Ensure all required fields exist for existing users
     if 'auto_research' not in user_data[user_id]:
         user_data[user_id]['auto_research'] = True
+    if 'conversation_mode' not in user_data[user_id]:
+        user_data[user_id]['conversation_mode'] = 'none'
     return user_data[user_id]
 
 def truncate_conversation(messages, max_tokens=MAX_TOKENS):
@@ -1529,7 +896,6 @@ def truncate_conversation(messages, max_tokens=MAX_TOKENS):
     Uses a simple heuristic of ~4 chars per token for estimation.
     Handles function calling messages with None content.
     """
-    
     if not messages:
         return messages
     
@@ -1610,7 +976,12 @@ def send_telegram_message(update, text, reply_markup=None):
     # Send the last chunk with reply_markup if provided
     update.message.reply_text(chunks[-1], reply_markup=reply_markup)
 
+# ============================================================================
+# COMMAND HANDLERS
+# ============================================================================
+
 def start(update, context):
+    """Handle /start command - welcome message with new arXiv capabilities"""
     user_id = update.effective_user.id
     user_name = update.effective_user.first_name or "there"
     udata = get_user_data(user_id)
@@ -1625,86 +996,80 @@ def start(update, context):
         update,
         f"Hi {user_name}! 🚀 Welcome to Inquisita Spark - your AI-powered research companion!\n\n" +
         f"{get_conversation_status(user_id)}\n\n" +
-        "🎆 What makes this special?\n" +
-        "I can chat naturally AND automatically search thousands of academic papers from ArXiv when you need research insights. No more switching between tools!\n\n" +
-        "🤖 Two brilliant AI assistants available:\n" +
-        "• LLAMA - Great for general research and explanations\n" +
-        "• Deepseek - Excellent for deep technical analysis\n\n" +
-        "💬 Smart Chat Commands:\n" +
-        "/llama <question> - Chat with LLAMA AI\n" +
-        "/deepseek <question> - Chat with Deepseek AI\n" +
-        "Just ask naturally! AI searches papers automatically when needed.\n\n" +
-        "📚 Manual Research Commands:\n" +
-        "/search <topic> - Search ArXiv papers directly\n" +
-        "/papers <topic> - View papers for specific topic\n" +
-        "/paper <id> - Get detailed paper information\n" +
-        "/topics - List all available research topics\n" +
-        "/prompt <topic> - Generate comprehensive research prompt\n\n" +
+        "🧠 Smart Chat (Recommended):\n" +
+        "/llama <question> - Chat with LLAMA 3.1\n" +
+        "/deepseek <question> - Chat with Deepseek R1\n" +
+        "💡 Just ask naturally! AI will automatically search, download, and analyze papers when needed.\n\n" +
+        "📚 Enhanced Research Tools:\n" +
+        "/search <query> - Search ArXiv papers with advanced filters\n" +
+        "/download <paper_id> - Download papers for detailed analysis\n" +
+        "/list - View all downloaded papers\n" +
+        "/read <paper_id> - Read full paper content\n" +
+        "/analyze <paper_id> - Get comprehensive paper analysis\n" +
+        "/topics - List available research topics\n\n" +
         "🔧 Utility Commands:\n" +
         "/reset - Clear conversation history\n" +
-        "/help - Show detailed help and toggle auto-research\n\n" +
+        "/help - Show detailed help and features\n\n" +
+        "✨ New Features: Advanced paper search with date/category filters, paper downloading, full-text reading, and AI-powered deep analysis!\n\n" +
         "👇 Choose your AI assistant below to get started!",
         reply_markup=reply_markup
     )
+    
+    # Show trending research topics as clickable buttons for new users
+    send_onboarding_research_suggestions(update)
 
 def help_command(update, context):
+    """Handle /help command - detailed help with new features"""
+    user_id = update.effective_user.id
+    reply_markup = update_keyboard(user_id)
+    
     send_telegram_message(update,
         "🤖 Inquisita Spark Research Assistant Help\n\n" +
         "🧠 Smart Chat (Recommended):\n" +
-        "/llama <question> - Chat with LLAMA\n" +
-        "/deepseek <question> - Chat with Deepseek\n" +
-        "💡 Just ask naturally! AI will search papers automatically when auto-research is enabled.\n\n" +
-        "📚 Manual Research Commands:\n" +
-        "/search <topic> - Search ArXiv papers directly\n" +
-        "/papers <topic> - View papers for specific topic\n" +
-        "/paper <id> - Get detailed paper information\n" +
-        "/topics - List all available research topics\n" +
-        "/prompt <topic> - Generate comprehensive research prompt\n\n" +
+        "/llama <question> - Chat with LLAMA 3.1 (70B parameters)\n" +
+        "/deepseek <question> - Chat with Deepseek R1 (advanced reasoning)\n" +
+        "💡 Just ask naturally! AI automatically uses research tools when needed.\n\n" +
+        "📚 Enhanced Research Tools:\n" +
+        "/search <query> - Search ArXiv papers with advanced filters\n" +
+        "   • Supports date filters (e.g., 'quantum computing since 2023')\n" +
+        "   • Category filters (e.g., 'cs.AI', 'cs.LG')\n" +
+        "/download <paper_id> - Download papers for detailed analysis\n" +
+        "/list - View all downloaded papers in your library\n" +
+        "/read <paper_id> - Read full paper content and metadata\n" +
+        "/analyze <paper_id> - Get comprehensive AI-powered analysis\n" +
+        "/topics - List available research topics\n\n" +
         "🔧 Utility Commands:\n" +
         "/reset - Clear conversation history\n" +
-        "/help - Show this help message"
+        "/help - Show this help message\n\n" +
+        "✨ New Features in v2.0:\n" +
+        "• Advanced paper search with date/category filters\n" +
+        "• Paper downloading and local storage\n" +
+        "• Full-text paper reading capabilities\n" +
+        "• AI-powered deep paper analysis\n" +
+        "• Seamless LLM integration with research tools\n\n" +
+        "🔬 Auto-Research: Toggle below to enable/disable automatic tool usage during conversations.",
+        reply_markup=reply_markup
     )
 
-def toggle_research_callback(update, context):
-    """Handle the research toggle button callback"""
-    query = update.callback_query
-    user_id = query.from_user.id
-    udata = get_user_data(user_id)
-    
-    # Toggle the setting
-    udata['auto_research'] = not udata.get('auto_research', True)
-    new_status = "ON" if udata['auto_research'] else "OFF"
-    
-    # Update the button
-    keyboard = [[
-        InlineKeyboardButton(
-            f"🔬 Auto-Research: {new_status} (Click to toggle)",
-            callback_data="toggle_research"
-        )
-    ]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    # Answer the callback query and update the message
-    query.answer(f"Auto-research {new_status}")
-    query.edit_message_reply_markup(reply_markup=reply_markup)
-    
-    # Send confirmation message
-    send_telegram_message(query, f"🔬 Auto-research is now {new_status}. This affects how LLAMA and Deepseek respond to research-related questions.")
-
 def search_command(update, context):
+    """Handle /search command - search ArXiv papers with new API"""
     user_id = update.effective_user.id
     args = context.args
     if not args:
-        send_telegram_message(update, "Usage: /search <topic>")
+        send_telegram_message(update, "📚 **Search ArXiv Papers**\n\nUsage: `/search <query>`\n\nExample: `/search quantum computing`\n\n💡 Supports advanced filters like date ranges and categories!")
         return
-    topic = " ".join(args)
+    
+    query = " ".join(args)
     try:
-        paper_ids = search_papers(topic, 10)  # Get 10 papers like button clicks
+        # Show progress message
+        progress_msg = send_telegram_message(update, f"🔍 Searching ArXiv for '{query}'...")
+        
+        paper_ids = search_papers(query, 10)  # Use new search_papers function
         
         if paper_ids:
-            response = f"📚 **Recent papers on {topic}:**\n\n"
+            response = f"📚 **Search Results for '{query}':**\n\n"
             
-            # Get detailed info for each paper (same as button click behavior)
+            # Get detailed info for each paper
             for i, paper_id in enumerate(paper_ids[:10], 1):
                 try:
                     paper_info = extract_info(paper_id)
@@ -1718,7 +1083,8 @@ def search_command(update, context):
                         pdf_url = paper_info.get('pdf_url', '')
                         
                         response += f"{i}. **{title}**\n"
-                        response += f"   Authors: {authors} ({published})\n"
+                        response += f"   📄 ID: `{paper_id}`\n"
+                        response += f"   👥 Authors: {authors} ({published})\n"
                         if pdf_url:
                             response += f"   [📄 PDF]({pdf_url})\n"
                         response += f"\n"
@@ -1726,58 +1092,232 @@ def search_command(update, context):
                         response += f"{i}. Paper ID: `{paper_id}`\n\n"
                 except Exception:
                     response += f"{i}. Paper ID: `{paper_id}`\n\n"
+            
+            response += f"💡 **Next steps:**\n"
+            response += f"• Use `/download <paper_id>` to download papers\n"
+            response += f"• Use `/analyze <paper_id>` for AI analysis"
         else:
-            response = f"❌ No papers found for '{topic}'. Try a different research area."
+            response = f"❌ No papers found for '{query}'. Try a different research area or broader terms."
         
         send_telegram_message(update, response)
         
     except Exception as e:
-        send_telegram_message(update, f"❌ Error searching for papers on '{topic}': {str(e)}")
+        print(f"Error in search_command: {str(e)}")
+        send_telegram_message(update, f"❌ Error searching for papers on '{query}': {str(e)}")
 
-def papers_command(update, context):
+def download_command(update, context):
+    """Download a paper by arXiv ID for detailed analysis"""
     args = context.args
     if not args:
-        send_telegram_message(update, "Usage: /papers <topic>")
+        send_telegram_message(update, "📥 **Download Paper**\n\nUsage: `/download <paper_id>`\n\nExample: `/download 2301.12345`\n\n💡 This downloads the paper for detailed reading and analysis.")
         return
-    topic = " ".join(args)
-    try:
-        papers_data = get_topic_papers(topic)
-        if not papers_data:
-            send_telegram_message(update, f"No papers found for topic '{topic}'.")
-            return
-        
-        response = f"📚 Papers on '{topic}' ({len(papers_data)} found):\n\n"
-        for i, paper in enumerate(papers_data, 1):
-            response += f"{i}. **{paper.get('title', 'Unknown Title')}**\n"
-            response += f"   ID: {paper.get('id', 'Unknown ID')}\n"
-            response += f"   Authors: {', '.join(paper.get('authors', [])[:2])}{'...' if len(paper.get('authors', [])) > 2 else ''}\n"
-            response += f"   Published: {paper.get('published', 'Unknown')[:10]}\n\n"
-        response += "Use `/paper <id>` to get detailed information about a specific paper."
-        send_telegram_message(update, response)
-    except Exception as e:
-        send_telegram_message(update, f"Error retrieving papers: {e}")
-
-def paper_command(update, context):
-    args = context.args
-    if not args:
-        send_telegram_message(update, "Usage: /paper <paper_id>")
-        return
+    
     paper_id = args[0]
     try:
-        info = extract_info(paper_id)
-        if "error" in info:
-            send_telegram_message(update, f"Error: {info['error']}")
+        # Show progress message
+        progress_msg = send_telegram_message(update, f"📥 Downloading paper {paper_id}...")
+        
+        result = download_paper(paper_id)
+        
+        if "error" in result:
+            send_telegram_message(update, f"❌ Error downloading paper: {result['error']}")
             return
-        msg = f"Paper Info for {paper_id}:\n"
-        msg += f"Title: {info.get('title', 'N/A')}\n"
-        msg += f"Authors: {', '.join(info.get('authors', []))}\n"
-        msg += f"Abstract: {info.get('summary', 'N/A')}\n"
-        msg += f"URL: {info.get('pdf_url', 'N/A')}\n"
+        
+        # Format success message
+        msg = f"✅ **Paper Downloaded Successfully!**\n\n"
+        msg += f"📄 **Title:** {result.get('title', 'N/A')}\n"
+        msg += f"👥 **Authors:** {', '.join(result.get('authors', []))}\n"
+        msg += f"📅 **Published:** {result.get('published', 'N/A')}\n\n"
+        msg += f"📚 The paper is now available for reading and analysis.\n\n"
+        msg += f"💡 **Next steps:**\n"
+        msg += f"• Use `/read {paper_id}` to read the full content\n"
+        msg += f"• Use `/analyze {paper_id}` for AI-powered analysis"
+        
         send_telegram_message(update, msg)
+        
     except Exception as e:
-        send_telegram_message(update, f"Error retrieving paper info: {e}")
+        print(f"Error in download_command: {str(e)}")
+        send_telegram_message(update, f"❌ Error downloading paper: {str(e)}")
+
+def list_command(update, context):
+    """List all downloaded papers"""
+    try:
+        # Show progress message
+        progress_msg = send_telegram_message(update, "📚 Retrieving your paper library...")
+        
+        result = list_papers()
+        
+        if "error" in result:
+            send_telegram_message(update, f"❌ Error retrieving papers: {result['error']}")
+            return
+        
+        papers = result.get('papers', [])
+        
+        if not papers:
+            send_telegram_message(update, "📭 **No Papers Downloaded Yet**\n\nUse `/download <paper_id>` to download papers for your library.\n\n💡 Try searching first with `/search <topic>` to find interesting papers!")
+            return
+        
+        # Format the papers list
+        msg = f"📚 **Your Paper Library** ({len(papers)} papers)\n\n"
+        
+        for i, paper in enumerate(papers, 1):
+            title = paper.get('title', 'Unknown Title')
+            paper_id = paper.get('id', 'Unknown ID')
+            authors = paper.get('authors', [])
+            published = paper.get('published', 'Unknown Date')
+            
+            # Truncate title if too long
+            if len(title) > 60:
+                title = title[:57] + "..."
+            
+            # Truncate authors if too many
+            author_str = ', '.join(authors[:2])
+            if len(authors) > 2:
+                author_str += f" et al. ({len(authors)} total)"
+            
+            msg += f"**{i}.** {title}\n"
+            msg += f"   📄 ID: `{paper_id}`\n"
+            msg += f"   👥 {author_str}\n"
+            msg += f"   📅 {published}\n\n"
+        
+        msg += f"💡 **Commands:**\n"
+        msg += f"• `/read <paper_id>` - Read full content\n"
+        msg += f"• `/analyze <paper_id>` - Get AI analysis"
+        
+        send_telegram_message(update, msg)
+        
+    except Exception as e:
+        print(f"Error in list_command: {str(e)}")
+        send_telegram_message(update, f"❌ Error retrieving paper list: {str(e)}")
+
+def read_command(update, context):
+    """Read the full content of a downloaded paper"""
+    args = context.args
+    if not args:
+        send_telegram_message(update, "📖 **Read Paper**\n\nUsage: `/read <paper_id>`\n\nExample: `/read 2301.12345`\n\n💡 This shows the full content of a downloaded paper.")
+        return
+    
+    paper_id = args[0]
+    try:
+        # Show progress message
+        progress_msg = send_telegram_message(update, f"📖 Reading paper {paper_id}...")
+        
+        result = read_paper(paper_id)
+        
+        if "error" in result:
+            send_telegram_message(update, f"❌ Error reading paper: {result['error']}\n\n💡 Make sure the paper is downloaded first using `/download {paper_id}`")
+            return
+        
+        # Format the paper content
+        content = result.get('content', '')
+        metadata = result.get('metadata', {})
+        
+        # Start with metadata
+        msg = f"📖 **Paper Content**\n\n"
+        msg += f"📄 **Title:** {metadata.get('title', 'N/A')}\n"
+        msg += f"👥 **Authors:** {', '.join(metadata.get('authors', []))}\n"
+        msg += f"📅 **Published:** {metadata.get('published', 'N/A')}\n"
+        msg += f"🔗 **URL:** {metadata.get('url', 'N/A')}\n\n"
+        
+        # Add content (truncate if too long for Telegram)
+        if content:
+            msg += f"📝 **Content:**\n{content}"
+        else:
+            msg += "📝 **Content:** No content available"
+        
+        # Check if message is too long for Telegram (4096 char limit)
+        if len(msg) > 4000:
+            # Split into chunks
+            header = msg[:msg.find("📝 **Content:**")]
+            content_start = msg.find("📝 **Content:**")
+            
+            # Send header first
+            send_telegram_message(update, header)
+            
+            # Send content in chunks
+            content_text = msg[content_start:]
+            chunk_size = 4000
+            for i in range(0, len(content_text), chunk_size):
+                chunk = content_text[i:i + chunk_size]
+                if i == 0:
+                    send_telegram_message(update, chunk)
+                else:
+                    send_telegram_message(update, f"📝 **Content (continued):**\n{chunk}")
+        else:
+            send_telegram_message(update, msg)
+        
+        # Add follow-up suggestions
+        follow_up = f"\n💡 **Next steps:**\n• Use `/analyze {paper_id}` for AI-powered analysis\n• Ask me questions about this paper!"
+        send_telegram_message(update, follow_up)
+        
+    except Exception as e:
+        print(f"Error in read_command: {str(e)}")
+        send_telegram_message(update, f"❌ Error reading paper: {str(e)}")
+
+def analyze_command(update, context):
+    """Get comprehensive AI-powered analysis of a downloaded paper"""
+    args = context.args
+    if not args:
+        send_telegram_message(update, "🔬 **Analyze Paper**\n\nUsage: `/analyze <paper_id>`\n\nExample: `/analyze 2301.12345`\n\n💡 This provides comprehensive AI-powered analysis of a downloaded paper.")
+        return
+    
+    paper_id = args[0]
+    try:
+        # Show progress message
+        progress_msg = send_telegram_message(update, f"🔬 Analyzing paper {paper_id} with AI...\n\n⏳ This may take a moment for comprehensive analysis.")
+        
+        result = get_deep_paper_analysis(paper_id)
+        
+        if "error" in result:
+            send_telegram_message(update, f"❌ Error analyzing paper: {result['error']}\n\n💡 Make sure the paper is downloaded first using `/download {paper_id}`")
+            return
+        
+        # Format the analysis
+        analysis = result.get('analysis', '')
+        metadata = result.get('metadata', {})
+        
+        # Start with paper info
+        msg = f"🔬 **AI Paper Analysis**\n\n"
+        msg += f"📄 **Paper:** {metadata.get('title', paper_id)}\n"
+        msg += f"👥 **Authors:** {', '.join(metadata.get('authors', []))}\n\n"
+        
+        # Add analysis
+        if analysis:
+            msg += f"📊 **Analysis:**\n{analysis}"
+        else:
+            msg += "📊 **Analysis:** No analysis available"
+        
+        # Check if message is too long for Telegram
+        if len(msg) > 4000:
+            # Split into chunks
+            header = msg[:msg.find("📊 **Analysis:**")]
+            analysis_start = msg.find("📊 **Analysis:**")
+            
+            # Send header first
+            send_telegram_message(update, header)
+            
+            # Send analysis in chunks
+            analysis_text = msg[analysis_start:]
+            chunk_size = 4000
+            for i in range(0, len(analysis_text), chunk_size):
+                chunk = analysis_text[i:i + chunk_size]
+                if i == 0:
+                    send_telegram_message(update, chunk)
+                else:
+                    send_telegram_message(update, f"📊 **Analysis (continued):**\n{chunk}")
+        else:
+            send_telegram_message(update, msg)
+        
+        # Add follow-up suggestions
+        follow_up = f"\n💡 **Follow up:**\n• Ask me specific questions about this analysis\n• Use `/read {paper_id}` to see the full paper content"
+        send_telegram_message(update, follow_up)
+        
+    except Exception as e:
+        print(f"Error in analyze_command: {str(e)}")
+        send_telegram_message(update, f"❌ Error analyzing paper: {str(e)}")
 
 def topics_command(update, context):
+    """Handle /topics command - list available research topics"""
     try:
         topics = get_available_folders()
         if not topics:
@@ -1798,7 +1338,112 @@ def topics_command(update, context):
         print(f"Error in topics_command: {str(e)}")
         send_telegram_message(update, f"❌ Error retrieving topics: {str(e)}")
 
+def papers_command(update, context):
+    """Handle /papers command - list papers in a topic"""
+    args = context.args
+    if not args:
+        send_telegram_message(update, "📚 **View Papers by Topic**\n\nUsage: `/papers <topic>`\n\nExample: `/papers quantum computing`\n\n💡 Use `/topics` to see available topics.")
+        return
+    
+    topic = " ".join(args)
+    try:
+        papers_data = get_topic_papers(topic)
+        if not papers_data:
+            send_telegram_message(update, f"📭 No papers found for topic '{topic}'.\n\n💡 Try `/search {topic}` to find and add papers to this topic.")
+            return
+        
+        response = f"📚 **Papers on '{topic}'** ({len(papers_data)} found):\n\n"
+        for i, paper in enumerate(papers_data, 1):
+            title = paper.get('title', 'Unknown Title')
+            if len(title) > 60:
+                title = title[:57] + "..."
+            
+            response += f"{i}. **{title}**\n"
+            response += f"   📄 ID: `{paper.get('id', 'Unknown ID')}`\n"
+            response += f"   👥 Authors: {', '.join(paper.get('authors', [])[:2])}{'...' if len(paper.get('authors', [])) > 2 else ''}\n"
+            response += f"   📅 Published: {paper.get('published', 'Unknown')[:10]}\n\n"
+        
+        response += "💡 **Commands:**\n"
+        response += "• `/download <paper_id>` - Download for analysis\n"
+        response += "• `/paper <paper_id>` - Get detailed info"
+        send_telegram_message(update, response)
+    except Exception as e:
+        print(f"Error in papers_command: {str(e)}")
+        send_telegram_message(update, f"❌ Error retrieving papers: {str(e)}")
+
+def paper_command(update, context):
+    """Handle /paper command - get detailed paper info"""
+    args = context.args
+    if not args:
+        send_telegram_message(update, "📄 **Get Paper Info**\n\nUsage: `/paper <paper_id>`\n\nExample: `/paper 2301.12345`\n\n💡 This shows detailed information about a specific paper.")
+        return
+    
+    paper_id = args[0]
+    try:
+        info = extract_info(paper_id)
+        if "error" in info:
+            send_telegram_message(update, f"❌ Error: {info['error']}")
+            return
+        
+        msg = f"📄 **Paper Information**\n\n"
+        msg += f"📄 **ID:** `{paper_id}`\n"
+        msg += f"📝 **Title:** {info.get('title', 'N/A')}\n"
+        msg += f"👥 **Authors:** {', '.join(info.get('authors', []))}\n"
+        msg += f"📅 **Published:** {info.get('published', 'N/A')}\n"
+        if info.get('pdf_url'):
+            msg += f"🔗 **PDF:** [Download]({info['pdf_url']})\n"
+        msg += f"\n📋 **Abstract:**\n{info.get('summary', 'N/A')}\n\n"
+        msg += f"💡 **Next steps:**\n"
+        msg += f"• Use `/download {paper_id}` to download for analysis\n"
+        msg += f"• Use `/analyze {paper_id}` for AI-powered insights"
+        
+        send_telegram_message(update, msg)
+    except Exception as e:
+        print(f"Error in paper_command: {str(e)}")
+        send_telegram_message(update, f"❌ Error retrieving paper info: {str(e)}")
+
+# ============================================================================
+# CONVERSATION MANAGEMENT
+# ============================================================================
+
+def set_conversation_mode(user_id, mode):
+    """Set explicit conversation mode: 'llama', 'deepseek', or 'none'"""
+    udata = get_user_data(user_id)
+    udata['conversation_mode'] = mode
+    if mode != 'none':
+        udata['last_model'] = mode
+    print(f"User {user_id} conversation mode set to: {mode}")
+
+def get_conversation_status(user_id):
+    """Get clear status message for user"""
+    udata = get_user_data(user_id)
+    mode = udata.get('conversation_mode', 'none')
+    research = "ON" if udata.get('auto_research', True) else "OFF"
+    
+    if mode == 'none':
+        return "💬 Ready to chat! Choose an AI assistant to start a conversation."
+    else:
+        return f"💬 Chatting with {mode.upper()} | Research: {research}"
+
+def is_in_conversation_mode(user_id):
+    """Check if user is currently in an active conversation mode"""
+    udata = get_user_data(user_id)
+    mode = udata.get('conversation_mode', 'none')
+    return mode in ['llama', 'deepseek']
+
+def update_keyboard(user_id):
+    """Update the custom keyboard with current research setting"""
+    udata = get_user_data(user_id)
+    auto_research_status = "ON" if udata.get('auto_research', True) else "OFF"
+    
+    keyboard = [
+        [KeyboardButton("Chat with LLAMA"), KeyboardButton("Chat with Deepseek")],
+        [KeyboardButton(f"🔬 Research: {auto_research_status}")]
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
 def llama_command(update, context):
+    """Handle /llama command - chat with LLAMA 3.1"""
     user_id = update.effective_user.id
     udata = get_user_data(user_id)
     
@@ -1855,7 +1500,6 @@ def llama_command(update, context):
         udata['llama_history'].insert(0, system_message)
     
     # Get reply from LLAMA with function calling enabled/disabled based on user setting
-    # Animation will be handled inside get_llama_reply when tools are actually called
     reply = get_llama_reply(udata['llama_history'], enable_tools=auto_research_enabled, update=update)
     
     # Only add assistant message to history if it's not an error
@@ -1865,11 +1509,12 @@ def llama_command(update, context):
     # Send the main response
     send_telegram_message(update, reply)
     
-    # Send LLM-powered follow-up hints as separate messages
+    # Send interactive hints as separate messages
     if not reply.startswith("⚠️"):  # Only send hints for successful responses
         send_interactive_hints(update, reply)
 
 def deepseek_command(update, context):
+    """Handle /deepseek command - chat with Deepseek R1"""
     user_id = update.effective_user.id
     udata = get_user_data(user_id)
     
@@ -1926,7 +1571,6 @@ def deepseek_command(update, context):
         udata['deepseek_history'].insert(0, system_message)
     
     # Get reply from Deepseek with function calling enabled/disabled based on user setting
-    # Animation will be handled inside get_deepseek_reply when tools are actually called
     reply = get_deepseek_reply(udata['deepseek_history'], enable_tools=auto_research_enabled, update=update)
     
     # Only add assistant message to history if it's not an error
@@ -1936,30 +1580,12 @@ def deepseek_command(update, context):
     # Send the main response
     send_telegram_message(update, reply)
     
-    # Send LLM-powered follow-up hints as separate messages
+    # Send interactive hints as separate messages
     if not reply.startswith("⚠️"):  # Only send hints for successful responses
         send_interactive_hints(update, reply)
 
-def prompt_command(update, context):
-    """Generate a comprehensive research prompt for a topic"""
-    if not context.args:
-        send_telegram_message(update, "📝 Please provide a research topic.\n\nUsage: /prompt <topic>\nExample: /prompt quantum computing")
-        return
-    
-    topic = " ".join(context.args)
-    
-    try:
-        # Generate research prompt
-        prompt = get_research_prompt(topic, 10)
-        
-        response = f"📝 **Research Prompt for '{topic}'**\n\n{prompt}"
-        send_telegram_message(update, response)
-        
-    except Exception as e:
-        print(f"Error in prompt command: {e}")
-        send_telegram_message(update, "❌ Sorry, there was an error generating the research prompt. Please try again.")
-
 def reset_command(update, context):
+    """Handle /reset command - clear conversation history"""
     user_id = update.effective_user.id
     udata = get_user_data(user_id)
     
@@ -1980,43 +1606,8 @@ def reset_command(update, context):
         reply_markup=reply_markup
     )
 
-def set_conversation_mode(user_id, mode):
-    """Set explicit conversation mode: 'llama', 'deepseek', or 'none'"""
-    udata = get_user_data(user_id)
-    udata['conversation_mode'] = mode
-    if mode != 'none':
-        udata['last_model'] = mode
-    print(f"User {user_id} conversation mode set to: {mode}")
-
-def get_conversation_status(user_id):
-    """Get clear status message for user"""
-    udata = get_user_data(user_id)
-    mode = udata.get('conversation_mode', 'none')
-    research = "ON" if udata.get('auto_research', True) else "OFF"
-    
-    if mode == 'none':
-        return "💬 Ready to chat! Choose an AI assistant to start a conversation."
-    else:
-        return f"💬 Chatting with {mode.upper()} | Research: {research}"
-
-def is_in_conversation_mode(user_id):
-    """Check if user is currently in an active conversation mode"""
-    udata = get_user_data(user_id)
-    mode = udata.get('conversation_mode', 'none')
-    return mode in ['llama', 'deepseek']
-
-def update_keyboard(user_id):
-    """Update the custom keyboard with current research setting"""
-    udata = get_user_data(user_id)
-    auto_research_status = "ON" if udata.get('auto_research', True) else "OFF"
-    
-    keyboard = [
-        [KeyboardButton("Chat with LLAMA"), KeyboardButton("Chat with Deepseek")],
-        [KeyboardButton(f"🔬 Research: {auto_research_status}")]
-    ]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-
 def message_handler(update, context):
+    """Handle text messages and route to appropriate AI assistant"""
     user_id = update.effective_user.id
     udata = get_user_data(user_id)
     text = update.message.text
@@ -2037,7 +1628,7 @@ def message_handler(update, context):
         )
         return
     
-    # Handle keyboard button presses for AI assistant selection (pure toggle)
+    # Handle keyboard button presses for AI assistant selection
     if text == "Chat with LLAMA":
         set_conversation_mode(user_id, 'llama')
         reply_markup = update_keyboard(user_id)
@@ -2088,22 +1679,109 @@ def message_handler(update, context):
             reply_markup=reply_markup
         )
 
-# Register handlers with the dispatcher
-if telegram_dispatcher:
-    telegram_dispatcher.add_handler(CommandHandler("start", start))
-    telegram_dispatcher.add_handler(CommandHandler("help", help_command))
-    telegram_dispatcher.add_handler(CommandHandler("search", search_command))
-    telegram_dispatcher.add_handler(CommandHandler("papers", papers_command))
-    telegram_dispatcher.add_handler(CommandHandler("paper", paper_command))
-    telegram_dispatcher.add_handler(CommandHandler("topics", topics_command))
-    telegram_dispatcher.add_handler(CommandHandler("prompt", prompt_command))
-    telegram_dispatcher.add_handler(CommandHandler("llama", llama_command))
-    telegram_dispatcher.add_handler(CommandHandler("deepseek", deepseek_command))
-    telegram_dispatcher.add_handler(CommandHandler("reset", reset_command))
-    # Add callback handler for interactive hint buttons
-    telegram_dispatcher.add_handler(CallbackQueryHandler(handle_hint_callback))
-    # Add handler for regular text messages (must be added last)
-    telegram_dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, message_handler))
+# Placeholder functions for onboarding and interactive hints
+# These functions are referenced in the command handlers but need to be implemented
+def send_onboarding_research_suggestions(update):
+    """Send trending research topics as clickable buttons for new users"""
+    # This function would generate and send research topic suggestions
+    # For now, we'll implement a simple version
+    try:
+        # Generate some default research topics
+        topics = [
+            "🤖 AI Research",
+            "⚛️ Quantum Computing", 
+            "🧬 Biotech Advances",
+            "🌍 Climate Science"
+        ]
+        
+        keyboard = []
+        for i in range(0, len(topics), 2):
+            row = [InlineKeyboardButton(topics[i], callback_data=f"topic_{i}")]
+            if i + 1 < len(topics):
+                row.append(InlineKeyboardButton(topics[i + 1], callback_data=f"topic_{i+1}"))
+            keyboard.append(row)
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        send_telegram_message(
+            update,
+            "🔬 **Trending Research Topics:**\n\nClick any topic below to start exploring!",
+            reply_markup=reply_markup
+        )
+    except Exception as e:
+        print(f"Error in send_onboarding_research_suggestions: {str(e)}")
+        # Fail silently to not disrupt user experience
+        pass
+
+def send_interactive_hints(update, reply, tools_used=None):
+    """Send interactive hints as buttons after AI responses"""
+    # This function would generate contextual follow-up suggestions
+    # For now, we'll implement a simple version with direct tool access
+    try:
+        user_id = update.effective_user.id
+        
+        # Create direct tool action buttons
+        keyboard = [
+            [
+                InlineKeyboardButton("🔍 Search Papers", callback_data=f"direct_search_{user_id}"),
+                InlineKeyboardButton("📚 Browse Topics", callback_data=f"direct_topics_{user_id}")
+            ],
+            [
+                InlineKeyboardButton("📄 Paper Info", callback_data=f"direct_paper_{user_id}"),
+                InlineKeyboardButton("🗺️ Research Guide", callback_data=f"direct_guide_{user_id}")
+            ]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        send_telegram_message(
+            update,
+            "💡 **Quick Actions:**\n\nChoose what you'd like to explore next!",
+            reply_markup=reply_markup
+        )
+    except Exception as e:
+        print(f"Error in send_interactive_hints: {str(e)}")
+        # Fail silently to not disrupt user experience
+        pass
+
+def handle_hint_callback(update, context):
+    """Handle callback queries from interactive hint buttons"""
+    query = update.callback_query
+    user_id = query.from_user.id
+    callback_data = query.data
+    
+    try:
+        # Answer the callback query to remove loading state
+        query.answer()
+        
+        # Handle different callback types
+        if callback_data.startswith("direct_"):
+            action = callback_data.split("_")[1]
+            
+            if action == "search":
+                send_telegram_message(query, "🔍 Use `/search <topic>` to find papers!\n\nExample: `/search quantum computing`")
+            elif action == "topics":
+                # Trigger topics command
+                context.args = []
+                topics_command(query, context)
+            elif action == "paper":
+                send_telegram_message(query, "📄 Use `/paper <paper_id>` to get detailed info!\n\nExample: `/paper 2301.12345`")
+            elif action == "guide":
+                send_telegram_message(query, "🗺️ Use `/help` to see all available commands and features!")
+        
+        elif callback_data.startswith("topic_"):
+            # Handle topic selection from onboarding
+            topic_index = int(callback_data.split("_")[1])
+            topics = ["AI Research", "Quantum Computing", "Biotech Advances", "Climate Science"]
+            
+            if topic_index < len(topics):
+                topic = topics[topic_index]
+                send_telegram_message(query, f"🔍 Searching for papers on {topic}...")
+                # Trigger search command
+                context.args = topic.lower().split()
+                search_command(query, context)
+    
+    except Exception as e:
+        print(f"Error in handle_hint_callback: {str(e)}")
+        query.answer("Sorry, there was an error processing your request.")
 
 # ============================================================================
 # FLASK WEB ROUTES
