@@ -1946,29 +1946,51 @@ def message_handler(update, context):
     if text == "Chat with LLAMA":
         set_conversation_mode(user_id, 'llama')
         reply_markup = update_keyboard(user_id)
-        send_telegram_message(
-            update, 
-            f"🤖 LLama Research Assistant\n\n{get_conversation_status(user_id)}\n\n"
-            f"I can help you with research questions and general chat. I have access to ArXiv papers and can search for academic research automatically when needed.\n\n"
-            f"Just ask me anything! You can continue chatting by typing messages directly.",
-            reply_markup=reply_markup
-        )
-        # Show trending research topics as clickable buttons for users who just selected LLama
-        send_onboarding_research_suggestions(update)
+        
+        # Different welcome message based on research mode
+        auto_research_enabled = udata.get('auto_research', True)
+        if auto_research_enabled:
+            welcome_message = (
+                f"🤖 LLama Research Assistant\n\n{get_conversation_status(user_id)}\n\n"
+                f"I can help you with research questions and general chat. I have access to ArXiv papers and can search for academic research automatically when needed.\n\n"
+                f"Just ask me anything! You can continue chatting by typing messages directly."
+            )
+        else:
+            welcome_message = (
+                f"🤖 LLama Chat Assistant\n\n{get_conversation_status(user_id)}\n\n"
+                f"I'm here to help with general questions, conversations, and provide information on a wide variety of topics. Research mode is currently OFF, so I won't automatically search for academic papers.\n\n"
+                f"Just ask me anything! You can continue chatting by typing messages directly."
+            )
+        
+        send_telegram_message(update, welcome_message, reply_markup=reply_markup)
+        # Show trending research topics only if research mode is enabled
+        if udata.get('auto_research', True):
+            send_onboarding_research_suggestions(update)
         return
         
     elif text == "Chat with Deepseek":
         set_conversation_mode(user_id, 'deepseek')
         reply_markup = update_keyboard(user_id)
-        send_telegram_message(
-            update, 
-            f"🧠 Deepseek Research Assistant\n\n{get_conversation_status(user_id)}\n\n"
-            f"I can help you with research questions and general chat. I have access to ArXiv papers and can search for academic research automatically when needed.\n\n"
-            f"Just ask me anything! You can continue chatting by typing messages directly.",
-            reply_markup=reply_markup
-        )
-        # Show trending research topics as clickable buttons for users who just selected Deepseek
-        send_onboarding_research_suggestions(update)
+        
+        # Different welcome message based on research mode
+        auto_research_enabled = udata.get('auto_research', True)
+        if auto_research_enabled:
+            welcome_message = (
+                f"🧠 Deepseek Research Assistant\n\n{get_conversation_status(user_id)}\n\n"
+                f"I can help you with research questions and general chat. I have access to ArXiv papers and can search for academic research automatically when needed.\n\n"
+                f"Just ask me anything! You can continue chatting by typing messages directly."
+            )
+        else:
+            welcome_message = (
+                f"🧠 Deepseek Chat Assistant\n\n{get_conversation_status(user_id)}\n\n"
+                f"I'm here to help with general questions, conversations, and provide information on a wide variety of topics. Research mode is currently OFF, so I won't automatically search for academic papers.\n\n"
+                f"Just ask me anything! You can continue chatting by typing messages directly."
+            )
+        
+        send_telegram_message(update, welcome_message, reply_markup=reply_markup)
+        # Show trending research topics only if research mode is enabled
+        if udata.get('auto_research', True):
+            send_onboarding_research_suggestions(update)
         return
     
     # Check if user is in an active conversation mode
