@@ -1335,15 +1335,15 @@ def handle_hint_callback(update, context):
                             pdf_url = paper_info.get('pdf_url', '')
                             summary = paper_info.get('summary', 'No summary available')
                             
-                            # Truncate summary to reasonable length
-                            if len(summary) > 200:
-                                summary = summary[:200] + '...'
-                            
                             response += f"{i}. {title}\n"  # No bold formatting
-                            response += f"   Authors: {authors} ({published})\n"
+                            response += f"    Authors: {authors} ({published})\n"
                             if pdf_url:
-                                response += f"   [📄 PDF]({pdf_url})\n"
-                            response += f"   Summary: {summary}\n\n"  # Include truncated summary
+                                response += f"    [📄 PDF]({pdf_url})\n"
+                            # Align summary with indentation and line breaks for clarity
+                            summary_lines = summary.strip().split("\n")
+                            for line in summary_lines:
+                                response += f"    {line.strip()}\n"
+                            response += "\n"
                         else:
                             response += f"{i}. Paper ID: `{paper_id}`\n\n"
                     except Exception:
