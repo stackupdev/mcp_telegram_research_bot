@@ -389,13 +389,21 @@ def search_and_extract_papers(topic: str, max_results: int = 10) -> str:
         detailed_papers = []
         for paper_id in paper_ids:
             paper_info = extract_info(paper_id)
-            if paper_info and not paper_info.startswith("There's no saved information"):
+            if paper_info and not (isinstance(paper_info, dict) and paper_info.get('error')):
                 try:
-                    # Parse JSON if it's a string
+                    # Handle different return types from extract_info
                     if isinstance(paper_info, str):
+                        # Check for error messages in string format
+                        if paper_info.startswith("There's no saved information"):
+                            continue
                         paper_data = json.loads(paper_info)
-                    else:
+                    elif isinstance(paper_info, dict):
+                        # Check for error in dict format
+                        if 'error' in paper_info:
+                            continue
                         paper_data = paper_info
+                    else:
+                        continue
                     
                     detailed_papers.append({
                         'id': paper_id,
@@ -1623,10 +1631,6 @@ def llama_command(update, context):
     
     # Send the main response
     send_telegram_message(update, reply)
-    
-    # Send LLM-powered follow-up hints as separate messages
-    if not reply.startswith("⚠️"):  # Only send hints for successful responses
-        send_interactive_hints(update, reply)
 
 def deepseek_command(update, context):
     user_id = update.effective_user.id
