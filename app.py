@@ -1688,14 +1688,40 @@ def search_command(update, context):
         return
     topic = " ".join(args)
     try:
-        paper_ids = search_papers(topic)
-        if not paper_ids:
-            send_telegram_message(update, f"No papers found for topic '{topic}'.")
-            return
-        msg = f"Found {len(paper_ids)} papers for topic '{topic}':\n" + "\n".join(paper_ids)
-        send_telegram_message(update, msg)
+        paper_ids = search_papers(topic, 10)  # Get 10 papers like button clicks
+        
+        if paper_ids:
+            response = f"📚 **Recent papers on {topic}:**\n\n"
+            
+            # Get detailed info for each paper (same as button click behavior)
+            for i, paper_id in enumerate(paper_ids[:10], 1):
+                try:
+                    paper_info = extract_info(paper_id)
+                    if isinstance(paper_info, dict) and 'error' not in paper_info:
+                        title = paper_info.get('title', 'Unknown Title')[:80] + ('...' if len(paper_info.get('title', '')) > 80 else '')
+                        authors = ', '.join(paper_info.get('authors', [])[:2])
+                        if len(paper_info.get('authors', [])) > 2:
+                            authors += ' et al.'
+                        
+                        published = paper_info.get('published', 'Unknown')
+                        pdf_url = paper_info.get('pdf_url', '')
+                        
+                        response += f"{i}. **{title}**\n"
+                        response += f"   Authors: {authors} ({published})\n"
+                        if pdf_url:
+                            response += f"   [📄 PDF]({pdf_url})\n"
+                        response += f"\n"
+                    else:
+                        response += f"{i}. Paper ID: `{paper_id}`\n\n"
+                except Exception:
+                    response += f"{i}. Paper ID: `{paper_id}`\n\n"
+        else:
+            response = f"❌ No papers found for '{topic}'. Try a different research area."
+        
+        send_telegram_message(update, response)
+        
     except Exception as e:
-        send_telegram_message(update, f"Error searching papers: {e}")
+        send_telegram_message(update, f"❌ Error searching for papers on '{topic}': {str(e)}")
 
 def papers_command(update, context):
     args = context.args
