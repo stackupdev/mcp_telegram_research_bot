@@ -257,15 +257,15 @@ def get_available_folders():
 
 def get_topic_papers(topic: str):
     """
-    Call the remote MCP server to get all papers for a topic.
-    Returns: List of paper dictionaries
+    Get all papers for a topic using optimized MCP resource access.
+    Returns: List of paper dictionaries with structured data
     """
     if not mcp_client_factory:
         print("MCP client factory not initialized")
         return []
     
     try:
-        # Get the topic papers resource via MCP using async helper
+        # Use MCP resource for efficient topic paper retrieval
         topic_formatted = topic.lower().replace(" ", "_")
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -275,148 +275,99 @@ def get_topic_papers(topic: str):
         # Handle MCP ReadResourceResult object
         text_content = None
         if hasattr(result, 'contents') and result.contents:
-            # Extract text from the first content item
             first_content = result.contents[0]
             if hasattr(first_content, 'text'):
                 text_content = first_content.text
         elif isinstance(result, str):
             text_content = result
         
-        if not text_content:
-            return []
-            
-        # Check for no papers message
-        if "No papers found" in text_content or "No topics found" in text_content:
+        if not text_content or "No papers found" in text_content:
             return []
         
-        # Parse the markdown content to extract paper information
+        # Optimized parsing for structured paper data
         papers = []
         lines = text_content.split('\n')
         current_paper = {}
-        in_summary = False
         
         for line in lines:
             line = line.strip()
             
             if line.startswith('## ') and not line.startswith('## Papers on'):
-                # New paper title
-                if current_paper and 'title' in current_paper:
+                # Save previous paper and start new one
+                if current_paper.get('title'):
                     papers.append(current_paper)
                 current_paper = {'title': line[3:]}
-                in_summary = False
                 
             elif line.startswith('- **Paper ID**:'):
                 paper_id = line.split(':', 1)[1].strip()
                 current_paper['id'] = paper_id
                 current_paper['entry_id'] = f"https://arxiv.org/abs/{paper_id}"
-                in_summary = False
                 
             elif line.startswith('- **Authors**:'):
                 authors_str = line.split(':', 1)[1].strip()
                 current_paper['authors'] = [author.strip() for author in authors_str.split(',')]
-                in_summary = False
                 
             elif line.startswith('- **Published**:'):
                 current_paper['published'] = line.split(':', 1)[1].strip()
-                in_summary = False
                 
             elif line.startswith('- **PDF URL**:'):
-                # Extract URL from markdown link format [url](url)
+                # Extract URL from markdown link [url](url)
                 url_part = line.split(':', 1)[1].strip()
-                if '[' in url_part and '](' in url_part:
-                    current_paper['pdf_url'] = url_part.split('](')[1].rstrip(')')
-                else:
-                    current_paper['pdf_url'] = url_part
-                in_summary = False
+                if '](' in url_part:
+                    url = url_part.split('](')[1].rstrip(')')
+                    current_paper['pdf_url'] = url
                     
             elif line.startswith('### Summary'):
-                # Start collecting summary lines
-                in_summary = True
-                current_paper['summary'] = ''
-                continue
+                # Next non-empty line will be summary
+                current_paper['summary'] = ""
                 
-            elif in_summary and line:
-                # Collect all summary lines - be more permissive about what we collect
-                # Stop only on clear section boundaries
-                if line.startswith('## ') and not line.startswith('## Papers on'):
-                    # This is a new paper, stop collecting summary
-                    in_summary = False
-                    # Process this line as a new paper title
-                    if current_paper and 'title' in current_paper:
-                        papers.append(current_paper)
-                    current_paper = {'title': line[3:]}
-                elif line.startswith('---') or line.startswith('Total papers:'):
-                    # End of section
-                    in_summary = False
-                else:
-                    # Continue collecting summary text
-                    if 'summary' not in current_paper:
-                        current_paper['summary'] = ''
-                    if current_paper['summary']:
-                        current_paper['summary'] += ' '
-                    current_paper['summary'] += line.replace('...', '').strip()
-                
-            elif line.startswith('## ') and not line.startswith('## Papers on'):
-                # New paper title (handle case where we're not in summary mode)
-                if not in_summary:
-                    if current_paper and 'title' in current_paper:
-                        papers.append(current_paper)
-                    current_paper = {'title': line[3:]}
-                in_summary = False
-                
-            elif line.startswith('---') or line.startswith('Total papers:'):
-                # End of current paper or section
-                in_summary = False
+            elif current_paper.get('summary') == "" and line and not line.startswith('#') and not line.startswith('-'):
+                # Capture summary content
+                current_paper['summary'] = line.replace('...', '').strip()
         
-        # Don't forget the last paper
-        if current_paper and 'title' in current_paper:
+        # Add final paper
+        if current_paper.get('title'):
             papers.append(current_paper)
         
         return papers
+        
     except Exception as e:
-        print(f"Error calling get_topic_papers via MCP: {e}")
+        print(f"Error getting topic papers via MCP: {e}")
         return []
 
 def get_research_prompt(topic: str, num_papers: int = 10) -> str:
     """
-    Get a structured research prompt from the MCP server for enhanced AI research.
-    This uses the MCP prompt primitive to generate comprehensive research instructions.
+    Get a structured research prompt using MCP prompt primitive for enhanced AI research.
     """
     if not mcp_client_factory:
         print("MCP client factory not initialized")
         return f"Search for {num_papers} academic papers about '{topic}' and provide a comprehensive analysis."
     
     try:
-        # Access the generate_search_prompt via MCP
-        print(f"Getting research prompt for topic: {topic}")
+        # Use MCP prompt primitive for optimized research guidance
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         result = loop.run_until_complete(call_mcp_tool("generate_search_prompt", topic=topic, num_papers=num_papers))
         loop.close()
         
-        print(f"Prompt result: {result}")
-        
-        # Extract prompt content
+        # Extract prompt content from MCP result
         if hasattr(result, 'content') and result.content:
-            content = result.content
-            if isinstance(content, list) and len(content) > 0:
-                first_item = content[0]
-                if hasattr(first_item, 'text'):
-                    return first_item.text
-                else:
-                    return str(first_item)
+            if isinstance(result.content, list) and result.content:
+                return result.content[0].get('text', str(result.content[0]))
+            elif isinstance(result.content, str):
+                return result.content
             else:
-                return str(content)
+                return str(result.content)
         elif isinstance(result, str):
             return result
         else:
-            # Fallback to basic prompt
-            return f"Search for {num_papers} academic papers about '{topic}' and provide a comprehensive analysis."
+            # Fallback if MCP prompt fails
+            return f"Search for {num_papers} academic papers about '{topic}' and provide a comprehensive analysis including key findings, methodologies, and research trends."
             
     except Exception as e:
         print(f"Error getting research prompt via MCP: {e}")
-        # Fallback to basic prompt
-        return f"Search for {num_papers} academic papers about '{topic}' and provide a comprehensive analysis."
+        # Fallback prompt for reliability
+        return f"Search for {num_papers} academic papers about '{topic}' and provide a comprehensive analysis including key findings, methodologies, and research trends."
 
 # ============================================================================
 # FUNCTION CALLING INFRASTRUCTURE
@@ -973,29 +924,24 @@ def generate_llm_follow_up_hints(conversation_context: str, last_response: str, 
 
 def send_interactive_hints(update, response: str, tools_used: list = None):
     """
-    Send direct tool-centric action buttons for immediate research tasks.
-    Simplified approach with direct tool mapping.
+    Send simplified research action buttons with no overlapping functionality.
     """
     user_id = update.effective_user.id
     
-    # Direct tool action buttons - no complex mapping needed
+    # Simplified action buttons - removed overlapping functionality
     keyboard = [
         [InlineKeyboardButton("🔍 Search Papers", callback_data=f"direct_search_{user_id}")],
         [InlineKeyboardButton("📁 Browse Topics", callback_data=f"direct_topics_{user_id}")],
         [InlineKeyboardButton("📄 Paper Info", callback_data=f"direct_paper_{user_id}")],
-        [InlineKeyboardButton("📚 Topic Papers", callback_data=f"direct_topic_papers_{user_id}")],
         [InlineKeyboardButton("🎯 Research Guide", callback_data=f"direct_guide_{user_id}")]
     ]
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    # Simple, clear message
-    message_text = "🔧 Quick Research Actions:"
-    
-    # Send direct action buttons
+    # Send action buttons
     send_telegram_message(
         update, 
-        message_text, 
+        "🔧 Quick Actions:", 
         reply_markup=reply_markup
     )
 
@@ -1127,7 +1073,7 @@ def send_onboarding_research_suggestions(update):
 
 def handle_hint_callback(update, context):
     """
-    Handle direct tool action callbacks with simplified routing.
+    Handle simplified callback routing for research actions.
     """
     query = update.callback_query
     query.answer()  # Acknowledge the callback
@@ -1135,7 +1081,7 @@ def handle_hint_callback(update, context):
     callback_data = query.data
     user_id = update.effective_user.id
     
-    # Direct tool action routing
+    # Simplified action routing
     if callback_data.startswith('direct_search_'):
         query.message.reply_text("🔍 What research topic would you like to search for?\n\nJust type your topic and I'll find the latest papers!")
         
@@ -1146,58 +1092,26 @@ def handle_hint_callback(update, context):
     elif callback_data.startswith('direct_paper_'):
         query.message.reply_text("📄 Please provide a paper ID or title to get detailed information.")
         
-    elif callback_data.startswith('direct_topic_papers_'):
-        # Show available topics as clickable buttons instead of text prompt
-        try:
-            topics = get_available_folders()
-            if not topics:
-                query.message.reply_text("📝 No topics available yet.\n\nStart by searching for papers on topics you're interested in!")
-                return
-            
-            # Create inline keyboard with topic buttons
-            keyboard = []
-            for topic in topics[:10]:  # Limit to 10 topics to avoid too many buttons
-                # Format topic name nicely
-                formatted_name = topic.replace("_", " ").title()
-                callback_data = f"topic_papers_{topic}_{user_id}"
-                keyboard.append([InlineKeyboardButton(f"📚 {formatted_name}", callback_data=callback_data)])
-            
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            query.message.reply_text(
-                "📚 **Select a Topic to View Papers:**\n\nClick on any topic below to see all saved papers:",
-                reply_markup=reply_markup
-            )
-        except Exception as e:
-            print(f"Error showing topic buttons: {e}")
-            query.message.reply_text("❌ Error loading topics. Please try again.")
-        
     elif callback_data.startswith('direct_guide_'):
         query.message.reply_text("🎯 What research topic would you like a structured guide for?")
         
-    # Legacy callback handling for backward compatibility
-    elif callback_data.startswith('arxiv_search_'):
-        query.message.reply_text("📄 What research topic would you like to search for on arXiv?\n\nJust type your topic and I'll find the latest papers for you!")
-        
     elif callback_data.startswith('onboard_'):
-        # Handle onboarding category selection
+        # Handle onboarding category selection with simplified routing
         try:
-            # Extract the index from callback data: onboard_{index}_{user_id}
             parts = callback_data.split('_')
             if len(parts) >= 2:
                 index = int(parts[1])
-                
-                # Get the selected category from stored onboarding questions
                 udata = get_user_data(user_id)
+                
                 if 'onboarding_questions' in udata and index < len(udata['onboarding_questions']):
                     selected_category = udata['onboarding_questions'][index]
                     
-                    # Send the category directly to the appropriate AI model
-                    # Check which conversation mode the user is in
                     if is_in_conversation_mode(user_id):
                         mode = udata.get('conversation_mode', 'none')
                         
-                        if mode == 'llama':
-                            # Create a fake update and context with the category as arguments
+                        # Simplified routing - just send the category as a message
+                        if mode in ['llama', 'deepseek']:
+                            # Create simplified fake objects for routing
                             fake_update = type('obj', (object,), {
                                 'effective_user': update.effective_user,
                                 'message': type('obj', (object,), {
@@ -1206,31 +1120,15 @@ def handle_hint_callback(update, context):
                                 })()
                             })()
                             
-                            # Create fake context with the category as args
                             fake_context = type('obj', (object,), {
-                                'args': selected_category.split(),  # Split category into words as args
-                                'bot': context.bot if hasattr(context, 'bot') else None
+                                'args': selected_category.split(),
+                                'bot': getattr(context, 'bot', None)
                             })()
                             
-                            llama_command(fake_update, fake_context)
-                            
-                        elif mode == 'deepseek':
-                            # Create a fake update and context with the category as arguments
-                            fake_update = type('obj', (object,), {
-                                'effective_user': update.effective_user,
-                                'message': type('obj', (object,), {
-                                    'text': selected_category,
-                                    'reply_text': query.message.reply_text
-                                })()
-                            })()
-                            
-                            # Create fake context with the category as args
-                            fake_context = type('obj', (object,), {
-                                'args': selected_category.split(),  # Split category into words as args
-                                'bot': context.bot if hasattr(context, 'bot') else None
-                            })()
-                            
-                            deepseek_command(fake_update, fake_context)
+                            if mode == 'llama':
+                                llama_command(fake_update, fake_context)
+                            else:
+                                deepseek_command(fake_update, fake_context)
                         else:
                             query.message.reply_text("Please select an AI model first using /llama or /deepseek")
                     else:
@@ -1242,46 +1140,6 @@ def handle_hint_callback(update, context):
         except Exception as e:
             print(f"Error handling onboarding callback: {e}")
             query.message.reply_text("Sorry, there was an error processing your selection. Please try again.")
-            
-    elif callback_data.startswith('topic_papers_'):
-        # Handle topic papers selection from inline buttons
-        try:
-            # Extract topic from callback data: topic_papers_{topic}_{user_id}
-            parts = callback_data.split('_', 2)  # Split into max 3 parts
-            if len(parts) >= 3:
-                topic = parts[2].rsplit('_', 1)[0]  # Remove user_id from end
-                
-                # Get papers for the selected topic
-                papers_data = get_topic_papers(topic)
-                
-                if isinstance(papers_data, str) and "error" in papers_data.lower():
-                    query.message.reply_text(f"❌ Error: {papers_data}")
-                    return
-                
-                if not papers_data:
-                    query.message.reply_text(f"📝 No papers found for topic '{topic.replace('_', ' ').title()}'.")
-                    return
-                
-                # Format and send the papers list
-                topic_display = topic.replace('_', ' ').title()
-                response = f"📚 **Papers on '{topic_display}'** ({len(papers_data)} found):\n\n"
-                
-                for i, paper in enumerate(papers_data, 1):
-                    response += f"{i}. **{paper.get('title', 'Unknown Title')}**\n"
-                    response += f"   ID: {paper.get('id', 'Unknown ID')}\n"
-                    response += f"   Authors: {', '.join(paper.get('authors', [])[:2])}{'...' if len(paper.get('authors', [])) > 2 else ''}\n"
-                    response += f"   Published: {paper.get('published', 'Unknown')[:10]}\n\n"
-                
-                response += "Use the 📄 Paper Info button to get detailed information about a specific paper."
-                query.message.reply_text(response)
-            else:
-                query.message.reply_text("Invalid topic selection. Please try again.")
-        except Exception as e:
-            print(f"Error handling topic papers callback: {e}")
-            query.message.reply_text("Sorry, there was an error loading the papers. Please try again.")
-            
-    elif callback_data.startswith('hint_'):
-        # Simplified hint handling - just prompt for direct input
         query.message.reply_text("💬 What would you like to research or explore next?")
 
 def get_deepseek_reply(messages: list, enable_tools: bool = True, update=None) -> str:
