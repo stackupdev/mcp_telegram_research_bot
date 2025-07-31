@@ -958,18 +958,6 @@ def format_deepseek_thinking(text: str) -> str:
     
     return formatted_text
 
-def generate_llm_follow_up_hints(conversation_context: str, last_response: str, tools_used: list = None) -> list:
-    """
-    Simplified hint generation - redundant options removed.
-    Returns essential fallback questions for backward compatibility.
-    """
-    # Since search and paper info are now automatic, only essential actions remain
-    return [
-        "📁 Explore other research topics?", 
-        "🎯 Need research guidance?",
-        "🔍 Continue with another search?"
-    ]
-
 def send_interactive_hints(update, response: str, tools_used: list = None):
     """
     Send essential research action buttons - redundant functions removed.
