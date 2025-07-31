@@ -1053,60 +1053,90 @@ def generate_fallback_button_labels(hints: list) -> list:
     
     return labels
 
-def generate_onboarding_research_terms() -> list:
+def generate_onboarding_research_terms():
     """
-    Generate trending research terms for new users to explore.
+    Generate truly random and varied trending research terms for new users to explore.
     """
+    import random
+    import time
+    
     try:
         client = Groq()
         
-        onboarding_prompt = """Generate 4-5 trending research topics that would interest curious researchers in 2024. 
+        # Random prompt variations for more variety
+        prompt_styles = [
+            "Generate 4-5 completely random and diverse research topic names from ANY field of science, technology, or academia. Be creative and unexpected!",
+            "Suggest 4-5 fascinating research area names that most people haven't heard of. Think interdisciplinary, emerging, or niche fields.",
+            "Create 4-5 cutting-edge topic names that would surprise and intrigue curious minds.",
+            "Generate 4-5 research topic names from completely different domains - mix hard sciences, social sciences, technology, and humanities.",
+            "Suggest 4-5 unconventional research area names that are gaining momentum but aren't mainstream yet."
+        ]
+        
+        # Random research domains to inspire variety
+        domain_hints = [
+            "neuroscience, archaeology, materials science, linguistics",
+            "marine biology, urban planning, cryptography, psychology", 
+            "astrophysics, anthropology, robotics, economics",
+            "genetics, philosophy, nanotechnology, sociology",
+            "ecology, computer vision, history, chemistry",
+            "geology, artificial intelligence, literature, medicine"
+        ]
+        
+        # Randomly select prompt style and domain hint
+        selected_prompt = random.choice(prompt_styles)
+        selected_domains = random.choice(domain_hints)
+        
+        # Add timestamp for uniqueness
+        timestamp_seed = int(time.time()) % 1000
+        
+        full_prompt = f"""{selected_prompt}
 
-Focus on cutting-edge areas like:
-- AI and machine learning advances
-- Quantum computing breakthroughs
-- Climate and sustainability tech
-- Biotechnology innovations
-- Space exploration
-- Renewable energy
+Consider diverse areas like: {selected_domains}
 
-Format as simple research questions, one per line:
-What are the latest developments in [topic]?
-How is [technology] being applied in [field]?
+Format as simple topic names, one per line.
+Examples: "Quantum Archaeology", "Urban Mycology", "Computational Linguistics"
+Make each topic name specific and intriguing.
+Avoid common topics like basic AI or climate change.
 
-Make them specific and engaging for someone wanting to explore current research."""
+Seed: {timestamp_seed}"""
         
         completion = client.chat.completions.create(
             model="llama-3.1-8b-instant",
             messages=[
-                {"role": "system", "content": "You are a research curator who suggests the most interesting and current research topics."},
-                {"role": "user", "content": onboarding_prompt}
+                {"role": "system", "content": "You are a creative research curator who discovers unique and surprising research topics from all fields of knowledge. Be unpredictable and diverse."},
+                {"role": "user", "content": full_prompt}
             ],
-            max_tokens=200,
-            temperature=0.7
+            max_tokens=250,
+            temperature=1.0  # Maximum creativity
         )
         
         response = completion.choices[0].message.content
         if not response:
             return []
         
-        # Parse questions from response
-        questions = []
+        # Parse topic names from response
+        topics = []
         for line in response.strip().split('\n'):
             line = line.strip()
-            if line and ('?' in line or 'latest' in line.lower() or 'how' in line.lower() or 'what' in line.lower()):
-                questions.append(line)
+            # Remove any numbering, bullets, or quotes
+            line = line.lstrip('1234567890.- *#"').rstrip('"')
+            if line and len(line) > 3:  # Only include substantial topic names
+                topics.append(line)
         
-        return questions[:5]  # Limit to 5 questions
+        return topics[:5]  # Limit to 5 topics
         
     except Exception as e:
         print(f"Error generating onboarding terms: {e}")
-        return [
-            "What are the latest developments in quantum computing?",
-            "How is AI being applied in healthcare?",
-            "What breakthroughs are happening in renewable energy?",
-            "How is machine learning advancing climate research?"
+        # Random fallback topic names instead of static ones
+        import random
+        fallback_pools = [
+            ["Quantum Computing", "AI Healthcare", "Renewable Energy", "Climate Machine Learning"],
+            ["Marine Biology", "Nanotechnology Materials", "Space Archaeology", "Urban Psychology"],
+            ["Cryptography Privacy", "Ancient Language AI", "Black Hole Physics", "Biotechnology Food"],
+            ["Sleep Research", "VR Therapy", "Sustainable Architecture", "Social Network Psychology"],
+            ["Fossil Dating", "Music AI Composition", "Earthquake Prediction", "Microbiome Mental Health"]
         ]
+        return random.choice(fallback_pools)
 
 def generate_onboarding_button_labels(questions: list) -> list:
     """
