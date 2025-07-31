@@ -1613,7 +1613,7 @@ def start(update, context):
         "/prompt <topic> - Generate comprehensive research prompt\n\n" +
         "🔧 Utility Commands:\n" +
         "/reset - Clear conversation history\n" +
-        "/help - Show detailed help and toggle auto-research\n\n" 
+        "/help - Show detailed help and toggle auto-research",
         reply_markup=reply_markup
     )
 
