@@ -1336,7 +1336,7 @@ def handle_hint_callback(update, context):
                             summary = paper_info.get('summary', 'No summary available')
                             
                             response += f"{i}. {title}\n"
-                            response += "```\n"
+                            response += "\n"
                             response += f"Authors: {authors} ({published})\n"
                             if pdf_url:
                                 response += f"PDF: {pdf_url}\n"
@@ -1344,7 +1344,7 @@ def handle_hint_callback(update, context):
                             response += "Summary:\n"
                             for line in summary_lines:
                                 response += f"  {line.strip()}\n"
-                            response += "```\n\n"
+                            response += "\n\n"
                         else:
                             response += f"{i}. Paper ID: `{paper_id}`\n\n"
                     except Exception:
@@ -1705,7 +1705,7 @@ def search_command(update, context):
                 try:
                     paper_info = extract_info(paper_id)
                     if isinstance(paper_info, dict) and 'error' not in paper_info:
-                        title = paper_info.get('title', 'Unknown Title')[:80] + ('...' if len(paper_info.get('title', '')) > 80 else '')
+                        title = paper_info.get('title', 'Unknown Title')[:100] + ('...' if len(paper_info.get('title', '')) > 80 else '')
                         authors = ', '.join(paper_info.get('authors', [])[:2])
                         if len(paper_info.get('authors', [])) > 2:
                             authors += ' et al.'
