@@ -1099,14 +1099,11 @@ Format as a simple list, one question per line, without numbering or bullets. Ma
 
 def send_interactive_hints(update, response: str, tools_used: list = None):
     """
-    Generate and send intelligent, tool-aware follow-up hints as interactive buttons.
-    Uses tool flow suggestions to provide structured research guidance.
+    Generate and send intelligent follow-up hints as interactive buttons.
+    Provides direct tool access and LLM-generated contextual questions.
     """
     # Get LLM-generated hints
     hints = generate_llm_follow_up_hints("", response, tools_used)
-    
-    # Get intelligent tool flow suggestions
-    tool_suggestions = get_tool_flow_suggestions(tools_used or [], response)
     
     if hints:
         # Generate LLM-powered button labels from the hint questions
@@ -1118,42 +1115,29 @@ def send_interactive_hints(update, response: str, tools_used: list = None):
             callback_data = f"hint_{i}_{update.effective_user.id}"
             keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
         
-        # Add intelligent next-step suggestions if available
-        if tool_suggestions['immediate_next_steps']:
-            # Add a separator for next steps
-            keyboard.append([InlineKeyboardButton("——— Smart Next Steps ———", callback_data="separator")])
-            
-            # Add up to 2 immediate next step suggestions
-            for i, next_step in enumerate(tool_suggestions['immediate_next_steps'][:2]):
-                # Extract tool name and create smart button
-                if ' - ' in next_step:
-                    tool_name, description = next_step.split(' - ', 1)
-                    tool_emoji = {
-                        'extract_info': '📋',
-                        'search_papers': '🔍',
-                        'get_topic_papers': '📚',
-                        'get_available_folders': '📁',
-                        'get_research_prompt': '🗺️'
-                    }.get(tool_name, '🔧')
-                    
-                    button_text = f"{tool_emoji} {description[:35]}..."
-                    callback_data = f"smart_step_{i}_{update.effective_user.id}"
-                    keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
+        # Add direct tool access buttons
+        keyboard.append([InlineKeyboardButton("——— Direct Research Tools ———", callback_data="separator")])
         
-        # Always add an "arXiv Papers" button for direct paper search
-        arxiv_callback = f"arxiv_search_{update.effective_user.id}"
-        keyboard.append([InlineKeyboardButton("📄 arXiv Papers", callback_data=arxiv_callback)])
+        # Add direct tool action buttons
+        user_id = update.effective_user.id
+        tool_buttons = [
+            [InlineKeyboardButton("🔍 Search Papers", callback_data=f"direct_search_{user_id}")],
+            [InlineKeyboardButton("📁 Browse Topics", callback_data=f"direct_topics_{user_id}")],
+            [InlineKeyboardButton("📋 Paper Info", callback_data=f"direct_info_{user_id}")],
+            [InlineKeyboardButton("🗺️ Research Guide", callback_data=f"direct_guide_{user_id}")]
+        ]
+        keyboard.extend(tool_buttons)
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        # Create intelligent message based on tools used
+        # Create message based on tools used
         if tools_used:
             tools_text = ", ".join(tools_used)
-            message_text = f"🧠 Based on the {tools_text} results, here are intelligent next steps:"
+            message_text = f"🧠 Based on the {tools_text} results, here are follow-up options:"
         else:
             message_text = "💡 What to explore next? Click a question below:"
         
-        # Send message with enhanced interactive buttons
+        # Send message with interactive buttons
         send_telegram_message(
             update, 
             message_text, 
@@ -1330,62 +1314,44 @@ def handle_hint_callback(update, context):
     if callback_data == "separator":
         return
     
-    if callback_data.startswith('arxiv_search_'):
-        # Handle arXiv Papers button click
-        user_id = int(callback_data.split('_')[2])
-        
-        # Send a prompt asking what to search for
-        query.message.reply_text("📄 What research topic would you like to search for on arXiv?\n\nJust type your topic and I'll find the latest papers for you!")
-        
-    elif callback_data.startswith('smart_step_'):
-        # Handle smart next step suggestions
+    if callback_data.startswith('direct_'):
+        # Handle direct tool action buttons
         parts = callback_data.split('_')
         if len(parts) >= 3:
-            step_index = int(parts[2])
-            user_id = int(parts[3])
+            action = parts[1]
+            user_id = int(parts[2])
             
-            # Get user's stored tool suggestions
+            # Create appropriate questions for each direct tool action
+            tool_questions = {
+                'search': "What research topic would you like to search for?",
+                'topics': "What research topics are available?",
+                'info': "What paper would you like detailed information about? (provide paper ID or title)",
+                'guide': "What topic would you like research guidance for?"
+            }
+            
+            question = tool_questions.get(action, "What would you like to research?")
+            
+            # Send the question
+            query.message.reply_text(f"🔧 {question}")
+            
+            # Create context for processing
+            fake_context = type('Context', (), {})() 
+            fake_context.args = question.split()
+            
+            # Create a new update object
+            fake_update = type('Update', (), {})()  
+            fake_update.effective_user = query.from_user
+            fake_update.effective_chat = query.message.chat
+            fake_update.message = query.message
+            
+            # Get user's last model preference
             udata = get_user_data(user_id)
-            tool_suggestions = udata.get('tool_suggestions', {})
+            last_model = udata.get('last_model', 'llama')
             
-            if 'immediate_next_steps' in tool_suggestions and step_index < len(tool_suggestions['immediate_next_steps']):
-                next_step = tool_suggestions['immediate_next_steps'][step_index]
-                
-                # Extract tool name and description
-                if ' - ' in next_step:
-                    tool_name, description = next_step.split(' - ', 1)
-                    
-                    # Create an intelligent question that will trigger the right tool
-                    tool_questions = {
-                        'extract_info': "Can you get detailed information about the most relevant paper from the results?",
-                        'search_papers': f"Search for more papers related to this topic",
-                        'get_topic_papers': "Show me papers that have been saved in this research area",
-                        'get_available_folders': "What other research topics are available to explore?",
-                        'get_research_prompt': "Give me structured research guidance for this topic"
-                    }
-                    
-                    smart_question = tool_questions.get(tool_name, description)
-                    
-                    # Send the smart question
-                    query.message.reply_text(f"🧠 Smart suggestion: {smart_question}")
-                    
-                    # Create context for processing
-                    fake_context = type('Context', (), {})() 
-                    fake_context.args = smart_question.split()
-                    
-                    # Create a new update object
-                    fake_update = type('Update', (), {})()  
-                    fake_update.effective_user = query.from_user
-                    fake_update.effective_chat = query.message.chat
-                    fake_update.message = query.message
-                    
-                    # Use last model or default to llama
-                    last_model = udata.get('last_model', 'llama')
-                    
-                    if last_model == 'deepseek':
-                        deepseek_command(fake_update, fake_context)
-                    else:
-                        llama_command(fake_update, fake_context)
+            if last_model == 'deepseek':
+                deepseek_command(fake_update, fake_context)
+            else:
+                llama_command(fake_update, fake_context)
         
     elif callback_data.startswith('hint_') or callback_data.startswith('onboard_'):
         parts = callback_data.split('_')
