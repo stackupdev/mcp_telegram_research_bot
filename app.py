@@ -1358,7 +1358,8 @@ def handle_hint_callback(update, context):
             # Create a fake update object for send_telegram_message
             class FakeMessage:
                 def reply_text(self, text, parse_mode=None, reply_markup=None, disable_web_page_preview=True):
-                    query.message.reply_text(text, parse_mode=parse_mode, reply_markup=reply_markup, disable_web_page_preview=disable_web_page_preview)
+                    # Force parse_mode=None for research results to prevent entity parsing errors
+                    query.message.reply_text(text, parse_mode=None, reply_markup=reply_markup, disable_web_page_preview=disable_web_page_preview)
             
             class FakeUpdate:
                 def __init__(self):
