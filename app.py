@@ -1063,13 +1063,13 @@ def generate_onboarding_research_terms():
     try:
         client = Groq()
         
-        # Random prompt variations for more variety
+        # Random prompt variations for more variety - EXACTLY TWO WORDS ONLY
         prompt_styles = [
-            "Generate 4-5 completely random and diverse research topic names from ANY field of science, technology, or academia. Be creative and unexpected!",
-            "Suggest 4-5 fascinating research area names that most people haven't heard of. Think interdisciplinary, emerging, or niche fields.",
-            "Create 4-5 cutting-edge topic names that would surprise and intrigue curious minds.",
-            "Generate 4-5 research topic names from completely different domains - mix hard sciences, social sciences, technology, and humanities.",
-            "Suggest 4-5 unconventional research area names that are gaining momentum but aren't mainstream yet."
+            "Generate 4-5 research topic names using EXACTLY TWO WORDS each. Examples: 'Quantum Biology', 'Digital Archaeology', 'Urban Mycology'. Be creative and unexpected!",
+            "Suggest 4-5 fascinating research areas using EXACTLY TWO WORDS each. Think interdisciplinary fields like 'Neuro Economics', 'Space Psychology'.",
+            "Create 4-5 cutting-edge topic names with EXACTLY TWO WORDS each. Examples: 'Crypto Botany', 'Sonic Geology', 'Virtual Anthropology'.",
+            "Generate 4-5 research topics using EXACTLY TWO WORDS each from different domains. Examples: 'Marine Robotics', 'Behavioral Finance', 'Computational Linguistics'.",
+            "Suggest 4-5 unconventional research areas using EXACTLY TWO WORDS each. Examples: 'Emotional AI', 'Quantum Sociology', 'Biomimetic Architecture'."
         ]
         
         # Random research domains to inspire variety
@@ -1359,10 +1359,21 @@ def handle_hint_callback(update, context):
                     else:
                         response = f"❌ No papers found for '{topic}'. Try a different research area."
                     
-                    query.message.reply_text(response, parse_mode='Markdown')
+                    # Use send_telegram_message to properly handle long messages and disable link previews
+                    # Create a fake update object for send_telegram_message
+                    class FakeMessage:
+                        def reply_text(self, text, parse_mode=None, reply_markup=None):
+                            query.message.reply_text(text, parse_mode=parse_mode, reply_markup=reply_markup, disable_web_page_preview=True)
+                    
+                    class FakeUpdate:
+                        def __init__(self):
+                            self.message = FakeMessage()
+                    
+                    fake_update = FakeUpdate()
+                    send_telegram_message(fake_update, response)
                     
                 except Exception as e:
-                    query.message.reply_text(f"❌ Error searching for papers on '{topic}': {str(e)}")
+                    query.message.reply_text(f"❌ Error searching for papers on '{topic}': {str(e)}", disable_web_page_preview=True)
                     llama_command(fake_update, fake_context)
 
 def get_deepseek_reply(messages: list, enable_tools: bool = True, update=None) -> str:
