@@ -1249,13 +1249,12 @@ def send_onboarding_research_suggestions(update):
 
 def handle_hint_callback(update, context):
     """
-    Handle callback when user clicks on a hint button, including smart step suggestions.
-    Sends the question and triggers a bot response with enhanced tool context.
+    Handle callback when user clicks on interactive buttons.
+    Simplified to work with topic names instead of questions.
     """
     query = update.callback_query
     query.answer()  # Acknowledge the callback
     
-    # Parse callback data: hint_{index}_{user_id}, onboard_{index}_{user_id}, smart_step_{index}_{user_id}
     callback_data = query.data
     
     # Handle separator buttons (do nothing)
@@ -1270,12 +1269,12 @@ def handle_hint_callback(update, context):
             user_id = int(parts[2])
             
             if action == 'browse':
-                # Browse More Topics - show available research folders
+                # Browse More Topics
                 try:
                     folders = get_available_folders()
                     if folders:
                         response = "📁 **Available Research Topics:**\n\n"
-                        for i, folder in enumerate(folders[:10], 1):  # Limit to 10
+                        for i, folder in enumerate(folders[:10], 1):
                             topic_display = folder.replace('_', ' ').title()
                             response += f"{i}. {topic_display}\n"
                         response += "\n💡 Click any research topic button to explore papers in that area."
@@ -1286,14 +1285,13 @@ def handle_hint_callback(update, context):
                     query.message.reply_text(f"❌ Error loading topics: {str(e)}")
                     
             elif action == 'saved':
-                # Saved Papers - show available topics with paper counts
+                # Saved Papers
                 try:
                     folders = get_available_folders()
                     if folders:
                         response = "📚 **Saved Papers by Topic:**\n\n"
                         for i, folder in enumerate(folders[:10], 1):
                             topic_display = folder.replace('_', ' ').title()
-                            # Get paper count for this topic
                             try:
                                 papers = get_topic_papers(folder)
                                 paper_count = len(papers) if papers else 0
@@ -1308,61 +1306,41 @@ def handle_hint_callback(update, context):
                     query.message.reply_text(f"❌ Error loading saved papers: {str(e)}")
                     
             elif action == 'search':
-                # Search Different Topic - simple prompt
+                # Search Different Topic
                 prompt = "🔍 **Search for Papers**\n\nType `/search <topic>` to find papers on any research topic.\n\nExample: `/search machine learning`"
                 query.message.reply_text(prompt, parse_mode='Markdown')
         
     elif callback_data.startswith('hint_') or callback_data.startswith('onboard_'):
+        # Handle topic button clicks (both onboarding and regular hints)
         parts = callback_data.split('_')
         if len(parts) >= 3:
             hint_index = int(parts[1])
             user_id = int(parts[2])
             
-            # Get user's stored hints or onboarding questions
             udata = get_user_data(user_id)
             
             if callback_data.startswith('onboard_'):
-                # Handle onboarding research topic selection
-                questions = udata.get('onboarding_questions', [])
+                topics = udata.get('onboarding_questions', [])
             else:
-                # Handle regular conversation hints
-                questions = udata.get('current_hints', [])
+                topics = udata.get('current_hints', [])
             
-            if hint_index < len(questions):
-                question = questions[hint_index]
+            if hint_index < len(topics):
+                # Topic is now a simple name (e.g., "Quantum Computing")
+                topic = topics[hint_index].strip()
                 
-                # Extract topic from the research question for direct search
-                # Remove common question words and extract the core topic
-                clean_question = question.split(' ', 1)[1] if ' ' in question else question
-                
-                # Extract topic keywords from the question
-                # Remove question words like "What are", "How does", etc.
-                topic_words = clean_question.lower()
-                for phrase in ["what are the latest developments in", "what are recent advances in", 
-                              "how does", "what is", "explain", "research on", "studies about"]:
-                    topic_words = topic_words.replace(phrase, "").strip()
-                
-                # Clean up the topic
-                topic = topic_words.replace("?", "").replace("research", "").strip()
-                if not topic:
-                    topic = "artificial intelligence"  # fallback
-                
-                # Execute direct search command instead of AI conversation
+                # Execute direct search using the topic name
                 try:
-                    # Call search_papers to get paper IDs
-                    paper_ids = search_papers(topic, 10)  # Get 10 papers
+                    paper_ids = search_papers(topic, 10)
                     
                     if paper_ids:
-                        response = f"📚 **Recent papers on {topic.title()}:**\n\n"
+                        response = f"📚 **Recent papers on {topic}:**\n\n"
                         
-                        # Get details for each paper using extract_info
                         for i, paper_id in enumerate(paper_ids[:10], 1):
                             try:
                                 paper_info = extract_info(paper_id)
                                 if isinstance(paper_info, dict) and 'error' not in paper_info:
-                                    # Successfully got paper info
                                     title = paper_info.get('title', 'Unknown Title')[:80] + ('...' if len(paper_info.get('title', '')) > 80 else '')
-                                    authors = ', '.join(paper_info.get('authors', [])[:2])  # First 2 authors
+                                    authors = ', '.join(paper_info.get('authors', [])[:2])
                                     if len(paper_info.get('authors', [])) > 2:
                                         authors += ' et al.'
                                     
@@ -1375,13 +1353,9 @@ def handle_hint_callback(update, context):
                                         response += f"   [📄 PDF]({pdf_url})\n"
                                     response += f"\n"
                                 else:
-                                    # Fallback if extract_info fails
                                     response += f"{i}. Paper ID: `{paper_id}`\n\n"
                             except Exception:
-                                # Fallback if extract_info fails
                                 response += f"{i}. Paper ID: `{paper_id}`\n\n"
-                        
-                        # No additional instruction needed - all info is shown
                     else:
                         response = f"❌ No papers found for '{topic}'. Try a different research area."
                     
