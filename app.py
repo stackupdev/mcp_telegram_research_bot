@@ -1221,7 +1221,7 @@ def send_onboarding_research_suggestions(update):
     # Send message with trending research topics
     send_telegram_message(
         update,
-        "🔥 Trending Research Topics - Click to explore:",
+        escape_markdown("🔥 **Trending Research Topics - Click to explore:**"),
         reply_markup=reply_markup
     )
     
@@ -1955,6 +1955,15 @@ def prompt_command(update, context):
         print(f"Error in prompt command: {e}")
         send_telegram_message(update, "❌ Sorry, there was an error generating the research prompt. Please try again.")
 
+import re
+
+def escape_markdown(text):
+    """Escape Telegram Markdown special characters."""
+    if not isinstance(text, str):
+        return text
+    # Escape all Telegram Markdown special characters
+    return re.sub(r'([_\*\[\]()~`>#+\-=|{}.!])', r'\\\1', text)
+
 def reset_command(update, context):
     user_id = update.effective_user.id
     udata = get_user_data(user_id)
@@ -1968,9 +1977,10 @@ def reset_command(update, context):
     
     # Update keyboard and send confirmation
     reply_markup = update_keyboard(user_id)
+    status = escape_markdown(get_conversation_status(user_id))
     send_telegram_message(
         update, 
-        f"✅ **Chat History Reset**\n\n{get_conversation_status(user_id)}\n\n"
+        f"✅ **Chat History Reset**\n\n{status}\n\n"
         f"Your conversation history with both LLama and Deepseek has been cleared. "
         f"Choose an AI assistant below to start a fresh conversation!",
         reply_markup=reply_markup
