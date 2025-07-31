@@ -964,26 +964,23 @@ def format_deepseek_thinking(text: str) -> str:
 
 def send_interactive_hints(update, response: str, tools_used: list = None):
     """
-    Send a single Research Guide button for comprehensive research follow-up.
-    Provides access to detailed research guidance after initial search results.
+    Send three useful buttons for simple research navigation.
     """
     user_id = update.effective_user.id
     
-    # Create single Research Guide button
+    # Create three useful buttons
     keyboard = [
-        [InlineKeyboardButton("🗺️ Research Guide", callback_data=f"mcp_guide_{user_id}")]
+        [InlineKeyboardButton("📁 Browse More Topics", callback_data=f"simple_browse_{user_id}")],
+        [InlineKeyboardButton("📚 Saved Papers", callback_data=f"simple_saved_{user_id}")],
+        [InlineKeyboardButton("🔍 Search Different Topic", callback_data=f"simple_search_{user_id}")]
     ]
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    # Create message based on tools used
-    if tools_used:
-        tools_text = ", ".join(tools_used)
-        message_text = f"🧠 Based on the {tools_text} results, get comprehensive research guidance:"
-    else:
-        message_text = "💡 Get detailed research guidance for deeper exploration:"
+    # Simple message
+    message_text = "💡 What would you like to do next?"
     
-    # Send message with MCP tool buttons
+    # Send message with simple navigation buttons
     send_telegram_message(
         update, 
         message_text, 
@@ -1235,17 +1232,55 @@ def handle_hint_callback(update, context):
     if callback_data == "separator":
         return
     
-    if callback_data.startswith('mcp_'):
-        # Handle Research Guide button
+    if callback_data.startswith('simple_'):
+        # Handle simple navigation buttons
         parts = callback_data.split('_')
         if len(parts) >= 3:
             action = parts[1]
             user_id = int(parts[2])
             
-            # Only handle 'guide' action now
-            if action == 'guide':
-                prompt = "🗺️ What topic would you like a comprehensive research guide for?\n\nJust type your topic and I'll provide structured research guidance!"
-                query.message.reply_text(prompt)
+            if action == 'browse':
+                # Browse More Topics - show available research folders
+                try:
+                    folders = get_available_folders()
+                    if folders:
+                        response = "📁 **Available Research Topics:**\n\n"
+                        for i, folder in enumerate(folders[:10], 1):  # Limit to 10
+                            topic_display = folder.replace('_', ' ').title()
+                            response += f"{i}. {topic_display}\n"
+                        response += "\n💡 Click any research topic button to explore papers in that area."
+                    else:
+                        response = "❌ No research topics found. Try searching for papers first."
+                    query.message.reply_text(response, parse_mode='Markdown')
+                except Exception as e:
+                    query.message.reply_text(f"❌ Error loading topics: {str(e)}")
+                    
+            elif action == 'saved':
+                # Saved Papers - show available topics with paper counts
+                try:
+                    folders = get_available_folders()
+                    if folders:
+                        response = "📚 **Saved Papers by Topic:**\n\n"
+                        for i, folder in enumerate(folders[:10], 1):
+                            topic_display = folder.replace('_', ' ').title()
+                            # Get paper count for this topic
+                            try:
+                                papers = get_topic_papers(folder)
+                                paper_count = len(papers) if papers else 0
+                                response += f"{i}. {topic_display} ({paper_count} papers)\n"
+                            except:
+                                response += f"{i}. {topic_display}\n"
+                        response += "\n💡 Use `/papers <topic>` to see papers in any topic."
+                    else:
+                        response = "❌ No saved papers found. Search for papers first to build your collection."
+                    query.message.reply_text(response, parse_mode='Markdown')
+                except Exception as e:
+                    query.message.reply_text(f"❌ Error loading saved papers: {str(e)}")
+                    
+            elif action == 'search':
+                # Search Different Topic - simple prompt
+                prompt = "🔍 **Search for Papers**\n\nType `/search <topic>` to find papers on any research topic.\n\nExample: `/search machine learning`"
+                query.message.reply_text(prompt, parse_mode='Markdown')
         
     elif callback_data.startswith('hint_') or callback_data.startswith('onboard_'):
         parts = callback_data.split('_')
