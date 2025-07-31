@@ -10,27 +10,7 @@ from telegram.ext import Dispatcher, CommandHandler, MessageHandler, CallbackQue
 from mcp.client.sse import sse_client
 from mcp.client.session import ClientSession
 
-# Import tool integration helpers
-try:
-    from tool_integration_helpers import (
-        get_tool_flow_suggestions,
-        generate_tool_aware_fallback_questions,
-        predict_next_tool_from_question,
-        enhance_question_with_tool_context
-    )
-except ImportError:
-    # Fallback functions if helper file is not available
-    def get_tool_flow_suggestions(tools_used, response_content):
-        return {'immediate_next_steps': [], 'exploration_paths': [], 'deep_dive_options': []}
-    
-    def generate_tool_aware_fallback_questions(tools_used):
-        return ["💡 What would you like to explore next?", "🔍 Search for more information?", "📚 Explore related topics?"]
-    
-    def predict_next_tool_from_question(question):
-        return 'search_papers'
-    
-    def enhance_question_with_tool_context(question, predicted_tool):
-        return question
+
 
 # Flask app initialization
 app = Flask(__name__)
