@@ -2086,7 +2086,88 @@ def message_handler(update, context):
     
     # Check if user is in an active conversation mode
     if is_in_conversation_mode(user_id):
-        # User is in conversation mode, route to appropriate AI
+        # Check if this looks like a direct research topic (especially during onboarding)
+        # Detect research topics: short phrases (1-4 words), academic-sounding terms
+        words = text.strip().split()
+        is_research_topic = (
+            len(words) <= 4 and  # Short phrase
+            len(text.strip()) >= 3 and  # Not too short
+            not any(word.lower() in ['how', 'what', 'why', 'when', 'where', 'can', 'could', 'would', 'should', 'tell', 'explain', 'help'] for word in words[:2]) and  # Not a question
+            udata.get('auto_research', True)  # Research mode is enabled
+        )
+        
+        if is_research_topic:
+            # Route to direct research execution (same as button clicks)
+            try:
+                # Create a fake update object for progressive feedback (same as button callback)
+                class FakeUser:
+                    def __init__(self, user_id):
+                        self.id = user_id
+                
+                class FakeUpdate:
+                    def __init__(self, user_id, chat):
+                        self.effective_user = FakeUser(user_id)
+                        self.effective_chat = chat
+                
+                fake_update = FakeUpdate(user_id, update.effective_chat)
+                
+                # Send initial search status
+                send_progressive_research_update(fake_update, "search_papers", "starting", f"Searching ArXiv for papers on {text.strip()}")
+                
+                paper_ids = search_papers(text.strip(), 10)
+                
+                if paper_ids:
+                    # Update progress
+                    send_progressive_research_update(fake_update, "search_papers", "completed", f"Found {len(paper_ids)} papers")
+                    send_progressive_research_update(fake_update, "extract_info", "starting", "Extracting paper details")
+                    
+                    response = f"📚 Recent papers on {text.strip()}:\n\n"
+                    
+                    for i, paper_id in enumerate(paper_ids[:10], 1):
+                        try:
+                            # Show progress for each paper extraction
+                            send_progressive_research_update(fake_update, "extract_info", "processing", f"Processing paper {i}/{len(paper_ids[:10])}")
+                            
+                            paper_info = extract_info(paper_id)
+                            if isinstance(paper_info, dict) and 'error' not in paper_info:
+                                title = paper_info.get('title', 'Unknown Title')  # No truncation
+                                authors = ', '.join(paper_info.get('authors', [])[:2])
+                                if len(paper_info.get('authors', [])) > 2:
+                                    authors += ' et al.'
+                                
+                                published = paper_info.get('published', 'Unknown')
+                                pdf_url = paper_info.get('pdf_url', '')
+                                summary = paper_info.get('summary', 'No summary available')
+                                
+                                response += f"{i}. {title}\n"
+                                response += "\n"
+                                response += f"Authors: {authors} ({published})\n"
+                                if pdf_url:
+                                    response += f"PDF: {pdf_url}\n"
+                                summary_clean = " ".join(summary.strip().split())
+                                response += "Summary:\n"
+                                response += f"  {summary_clean}\n\n"
+                            else:
+                                response += f"{i}. Paper ID: `{paper_id}`\n\n"
+                        except Exception:
+                            response += f"{i}. Paper ID: `{paper_id}`\n\n"
+                    
+                    # Final completion message
+                    finalize_research_feedback(fake_update, 2, 2)
+                else:
+                    send_progressive_research_update(fake_update, "search_papers", "completed", "No papers found")
+                    response = f"❌ No papers found for '{text.strip()}'. Try a different research area."
+                
+                # Send the research results
+                send_telegram_message(update, response)
+                return
+                
+            except Exception as e:
+                print(f"Error in direct research execution: {e}")
+                send_telegram_message(update, f"❌ Error searching for papers on '{text.strip()}': {str(e)}")
+                return
+        
+        # User is in conversation mode, route to appropriate AI (normal conversation)
         mode = udata.get('conversation_mode', 'llama')
         context.args = text.split()
         
