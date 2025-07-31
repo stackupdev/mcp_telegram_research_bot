@@ -4,11 +4,11 @@ import asyncio
 from typing import List
 from flask import Flask, render_template, request, jsonify
 from groq import Groq
-from telegram import Update, Bot, ReplyKeyboardMarkup, KeyboardButton
+from telegram import Update, Bot, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Dispatcher, CommandHandler, MessageHandler, CallbackQueryHandler, Filters
 from mcp.client.sse import sse_client
 from mcp.client.session import ClientSession
-from combined_research import search_and_extract_papers
+# Combined research function moved inline to reduce file complexity
 
 # Flask app initialization
 app = Flask(__name__)
@@ -370,7 +370,82 @@ def get_research_prompt(topic: str, num_papers: int = 10) -> str:
         # Fallback prompt for reliability
         return f"Search for {num_papers} academic papers about '{topic}' and provide a comprehensive analysis including key findings, methodologies, and research trends."
 
-# search_and_extract_papers function is now imported from combined_research.py
+def search_and_extract_papers(topic: str, max_results: int = 10) -> str:
+    """
+    Combined function that searches for papers and extracts detailed info for each.
+    Returns beautifully formatted results with arXiv numbers and PDF URLs.
+    """
+    if not mcp_client_factory:
+        return "❌ MCP client not initialized"
+    
+    try:
+        # Step 1: Search for papers
+        paper_ids = search_papers(topic, max_results)
+        
+        if not paper_ids:
+            return f"📝 No papers found for topic '{topic}'. Try a different search term."
+        
+        # Step 2: Extract detailed info for each paper
+        detailed_papers = []
+        for paper_id in paper_ids:
+            paper_info = extract_info(paper_id)
+            if paper_info and not paper_info.startswith("There's no saved information"):
+                try:
+                    # Parse JSON if it's a string
+                    if isinstance(paper_info, str):
+                        paper_data = json.loads(paper_info)
+                    else:
+                        paper_data = paper_info
+                    
+                    detailed_papers.append({
+                        'id': paper_id,
+                        'data': paper_data
+                    })
+                except json.JSONDecodeError:
+                    # If parsing fails, skip this paper
+                    continue
+        
+        if not detailed_papers:
+            return f"📄 Found {len(paper_ids)} papers for '{topic}' but couldn't extract detailed information. The papers may need to be processed first."
+        
+        # Step 3: Format results beautifully
+        response = f"🔬 **Research Results for '{topic}'**\n"
+        response += f"Found {len(detailed_papers)} papers with detailed information:\n\n"
+        
+        for i, paper in enumerate(detailed_papers, 1):
+            paper_data = paper['data']
+            paper_id = paper['id']
+            
+            response += f"**{i}. {paper_data.get('title', 'Unknown Title')}**\n"
+            response += f"📋 **arXiv ID:** `{paper_id}` (tap to copy)\n"
+            response += f"👥 **Authors:** {', '.join(paper_data.get('authors', [])[:3])}{'...' if len(paper_data.get('authors', [])) > 3 else ''}\n"
+            response += f"📅 **Published:** {paper_data.get('published', 'Unknown')}\n"
+            
+            # Make PDF URL easily accessible
+            pdf_url = paper_data.get('pdf_url', '')
+            if pdf_url:
+                response += f"📄 **PDF:** [Download Paper]({pdf_url})\n"
+            
+            # Add summary preview
+            summary = paper_data.get('summary', '')
+            if summary:
+                # Truncate summary to first 200 characters
+                summary_preview = summary[:200] + "..." if len(summary) > 200 else summary
+                response += f"📖 **Summary:** {summary_preview}\n"
+            
+            response += "\n" + "─" * 40 + "\n\n"
+        
+        # Add helpful footer
+        response += "💡 **Quick Actions:**\n"
+        response += "• Tap any arXiv ID to copy it\n"
+        response += "• Click PDF links to download papers\n"
+        response += "• Use the buttons below for more research options"
+        
+        return response
+        
+    except Exception as e:
+        print(f"Error in search_and_extract_papers: {e}")
+        return f"❌ Error searching papers: {str(e)}"
 
 # ============================================================================
 # FUNCTION CALLING INFRASTRUCTURE
@@ -958,12 +1033,7 @@ def format_deepseek_thinking(text: str) -> str:
     
     return formatted_text
 
-def send_interactive_hints(update, response: str, tools_used: list = None):
-    """
-    Simplified function - no longer sends interactive buttons.
-    """
-    # Interactive hints removed for simplicity
-    pass
+# send_interactive_hints function removed - no longer needed after inline button simplification
 
 def generate_onboarding_research_terms() -> list:
     """
@@ -1012,14 +1082,18 @@ IMPORTANT:
             # Remove any ** formatting and extra whitespace
             line = line.replace('**', '').strip()
             
-            # Check if line has an emoji and exactly two words after it
-            if line and any(emoji in line for emoji in ['🤖', '🧬', '⚛️', '🌱', '🚀', '🧠', '🔬', '💡', '🌊', '🔒', '🌍', '🎯', '💻', '🔋', '🎮']):
-                # Split by space and ensure we have emoji + exactly 2 words
+            # Check if line has an emoji (any emoji) and words after it
+            if line and len(line) > 0:
+                # Split by space and check if first character is likely an emoji
                 parts = line.split()
-                if len(parts) == 3:  # emoji + 2 words
-                    categories.append(line)
-                elif len(parts) > 3:  # emoji + more than 2 words, truncate to 2
-                    categories.append(f"{parts[0]} {parts[1]} {parts[2]}")
+                if len(parts) >= 3:  # Should have emoji + at least 2 words
+                    # Check if first part contains emoji (Unicode range for emojis)
+                    first_part = parts[0]
+                    if any(ord(char) > 127 for char in first_part):  # Contains non-ASCII (likely emoji)
+                        if len(parts) == 3:  # emoji + 2 words
+                            categories.append(line)
+                        elif len(parts) > 3:  # emoji + more than 2 words, truncate to 2
+                            categories.append(f"{parts[0]} {parts[1]} {parts[2]}")
         
         # If we got good categories, return them
         if len(categories) >= 3:
@@ -1067,18 +1141,20 @@ def send_onboarding_research_suggestions(update):
             "Welcome! Use /help to see available commands or try /llama or /deepseek to start chatting."
         )
 
-def handle_hint_callback(update, context):
+def handle_callback_query(update, context):
     """
-    Simplified callback handler - only handles essential functionality.
+    Handle callback queries from inline buttons (research toggle, etc.).
     """
     query = update.callback_query
-    query.answer()  # Acknowledge the callback
-    
     callback_data = query.data
     
-    # Only handle essential callbacks - non-essential inline buttons removed
-    # This function is kept minimal for future essential button functionality
-    query.message.reply_text("Use /help to see available commands or try /llama or /deepseek to start chatting.")
+    # Handle essential research toggle functionality
+    if callback_data == "toggle_research":
+        toggle_research_callback(update, context)
+    else:
+        # For any other callbacks, provide help message
+        query.answer()
+        query.message.reply_text("Use /help to see available commands or try /llama or /deepseek to start chatting.")
 
 def get_deepseek_reply(messages: list, enable_tools: bool = True, update=None) -> str:
     """
@@ -1783,8 +1859,8 @@ if telegram_dispatcher:
     telegram_dispatcher.add_handler(CommandHandler("llama", llama_command))
     telegram_dispatcher.add_handler(CommandHandler("deepseek", deepseek_command))
     telegram_dispatcher.add_handler(CommandHandler("reset", reset_command))
-    # Add callback handler for interactive hint buttons
-    telegram_dispatcher.add_handler(CallbackQueryHandler(handle_hint_callback))
+    # Add callback handler for essential inline buttons (research toggle, etc.)
+    telegram_dispatcher.add_handler(CallbackQueryHandler(handle_callback_query))
     # Add handler for regular text messages (must be added last)
     telegram_dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, message_handler))
 
