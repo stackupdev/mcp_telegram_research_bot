@@ -1057,24 +1057,33 @@ def generate_onboarding_button_labels(questions: list) -> list:
     try:
         client = Groq()
         
-        prompt = """Create button labels for these research questions. Return ONLY the labels, one per line, no explanations:
+        # Create a clearer, more structured prompt
+        topics_list = '\n'.join([f"{i+1}. {topic}" for i, topic in enumerate(questions)])
+        
+        prompt = f"""Transform these research topics into button labels:
 
-{}
+{topics_list}
 
-Requirements:
-- Max 30 characters each
-- Include relevant emoji
-- Be specific and actionable
-- No introductory text or explanations"""
+Output format: One label per line.
+Example output:
+🔬 Quantum Biology
+⚛️ Digital Archaeology
+🌱 Urban Ecology
+
+Rules:
+- Start each label with a relevant emoji
+- Keep under 30 characters
+- Use full words, no abbreviations
+- No explanations or extra text"""
         
         completion = client.chat.completions.create(
             model="llama-3.1-8b-instant",
             messages=[
-                {"role": "system", "content": "You create concise button labels. Return ONLY the labels, one per line. No explanations, no introductory text, no formatting."},
-                {"role": "user", "content": prompt.format('\n'.join(questions))}
+                {"role": "system", "content": "You are a button label generator. Output exactly the requested number of labels, one per line. No additional text."},
+                {"role": "user", "content": prompt}
             ],
-            max_tokens=150,
-            temperature=0.7
+            max_tokens=200,
+            temperature=0.5
         )
         
         response = completion.choices[0].message.content
@@ -1092,11 +1101,9 @@ Requirements:
                 if len(line) > 3:  # Only include substantial labels
                     labels.append(line[:35])  # Limit length for mobile
         
-        # Ensure we have labels for all questions
-        while len(labels) < len(questions):
-            labels.append(f"🔬 Research Topic {len(labels)+1}")
-        
-        return labels[:len(questions)]  # Match number of questions
+        # Return only the labels that were successfully generated
+        # No artificial padding - if LLM generates fewer labels, that's fine
+        return labels
         
     except Exception as e:
         print(f"Error generating onboarding button labels: {e}")
