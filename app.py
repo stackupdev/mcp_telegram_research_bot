@@ -425,7 +425,7 @@ def get_research_prompt(topic: str, num_papers: int = 10) -> str:
 # FUNCTION CALLING INFRASTRUCTURE
 # ============================================================================
 
-# Define function schemas for MCP tools (limited to core research functions)
+# Define function schemas for MCP tools
 MCP_TOOLS = [
     {
         "type": "function",
@@ -463,6 +463,57 @@ MCP_TOOLS = [
                     }
                 },
                 "required": ["paper_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_topic_papers",
+            "description": "Get all papers that have been previously saved for a specific research topic. Use this to retrieve papers from a known research area.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "topic": {
+                        "type": "string",
+                        "description": "The topic name to get papers for (use exact topic names from get_available_folders)"
+                    }
+                },
+                "required": ["topic"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_available_folders",
+            "description": "List all available research topic folders that contain saved papers. Use this to see what research topics are available.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_research_prompt",
+            "description": "Generate a comprehensive research prompt for in-depth academic analysis. Use this when you want to provide structured, detailed research guidance for a topic.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "topic": {
+                        "type": "string",
+                        "description": "The research topic to generate a comprehensive prompt for"
+                    },
+                    "num_papers": {
+                        "type": "integer",
+                        "description": "Number of papers to include in the research analysis (default: 10)",
+                        "default": 10
+                    }
+                },
+                "required": ["topic"]
             }
         }
     }
