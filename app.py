@@ -1970,7 +1970,7 @@ def reset_command(update, context):
     reply_markup = update_keyboard(user_id)
     send_telegram_message(
         update, 
-        f"✅ **Chat History Reset**\n\n{get_conversation_status(user_id)}\n\n"
+        f"✅ ```**Chat History Reset**```\n\n{get_conversation_status(user_id)}\n\n"
         f"Your conversation history with both LLama and Deepseek has been cleared. "
         f"Choose an AI assistant below to start a fresh conversation!",
         reply_markup=reply_markup
