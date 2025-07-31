@@ -1220,9 +1220,8 @@ def handle_hint_callback(update, context):
                         
                         for i, paper_id in enumerate(paper_ids[:10], 1):
                             try:
-                                # Show progress for paper extraction
-                                if i <= 3:  # Only show progress for first few papers to avoid spam
-                                    send_progressive_research_update(fake_update, "extract_info", "processing", f"Processing paper {i}/{len(paper_ids[:10])}")
+                                # Show progress for each paper extraction
+                                send_progressive_research_update(fake_update, "extract_info", "processing", f"Processing paper {i}/{len(paper_ids[:10])}")
                                 
                                 paper_info = extract_info(paper_id)
                                 if isinstance(paper_info, dict) and 'error' not in paper_info:
