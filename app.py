@@ -1608,11 +1608,15 @@ def send_telegram_message(update, text, reply_markup=None, use_markdown=True):
         chunks.append(current_chunk.strip())
     
     # Send all chunks except the last one without reply_markup
-    for chunk in chunks[:-1]:
-        update.message.reply_text(chunk, parse_mode='Markdown' if use_markdown else None, disable_web_page_preview=True)
-    
-    # Send the last chunk with reply_markup if provided
-    update.message.reply_text(chunks[-1], reply_markup=reply_markup, parse_mode='Markdown' if use_markdown else None, disable_web_page_preview=True)
+    # For research results (use_markdown is False), always force parse_mode=None
+    if not use_markdown:
+        for chunk in chunks[:-1]:
+            update.message.reply_text(chunk, parse_mode=None, disable_web_page_preview=True)
+        update.message.reply_text(chunks[-1], reply_markup=reply_markup, parse_mode=None, disable_web_page_preview=True)
+    else:
+        for chunk in chunks[:-1]:
+            update.message.reply_text(chunk, parse_mode='Markdown', disable_web_page_preview=True)
+        update.message.reply_text(chunks[-1], reply_markup=reply_markup, parse_mode='Markdown', disable_web_page_preview=True)
 
 def start(update, context):
     user_id = update.effective_user.id
