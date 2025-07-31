@@ -1120,19 +1120,23 @@ def generate_onboarding_button_labels(questions: list) -> list:
     try:
         client = Groq()
         
-        prompt = """Generate concise button labels (max 30 chars each) for these research questions:
+        prompt = """Create button labels for these research questions. Return ONLY the labels, one per line, no explanations:
 
 {}
 
-Format as a list, one label per line. Make each label specific and actionable. Include relevant emojis."""
+Requirements:
+- Max 30 characters each
+- Include relevant emoji
+- Be specific and actionable
+- No introductory text or explanations"""
         
         completion = client.chat.completions.create(
             model="llama-3.1-8b-instant",
             messages=[
-                {"role": "system", "content": "You are a UX expert that creates concise, actionable button labels for research topics."},
+                {"role": "system", "content": "You create concise button labels. Return ONLY the labels, one per line. No explanations, no introductory text, no formatting."},
                 {"role": "user", "content": prompt.format('\n'.join(questions))}
             ],
-            max_tokens=200,
+            max_tokens=150,
             temperature=0.7
         )
         
@@ -1140,14 +1144,16 @@ Format as a list, one label per line. Make each label specific and actionable. I
         if not response:
             return generate_onboarding_fallback_labels(questions)
         
-        # Parse labels from response
+        # Parse labels from response with better filtering
         labels = []
         for line in response.strip().split('\n'):
             line = line.strip()
-            if line:
-                # Remove any numbering or bullets
-                line = line.lstrip('1234567890.- ')
-                labels.append(line[:35])  # Limit length for mobile
+            if line and not line.lower().startswith(('here', 'the', 'labels', 'button')):
+                # Remove any numbering, bullets, or markdown formatting
+                line = line.lstrip('1234567890.- *#')
+                line = line.replace('**', '').replace('*', '')
+                if len(line) > 3:  # Only include substantial labels
+                    labels.append(line[:35])  # Limit length for mobile
         
         # Ensure we have labels for all questions
         while len(labels) < len(questions):
