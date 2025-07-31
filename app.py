@@ -1276,36 +1276,40 @@ def handle_hint_callback(update, context):
             action = parts[1]
             user_id = int(parts[2])
             
-            # Create MCP tool-specific questions that will trigger the right tools
-            mcp_questions = {
-                'search': "Search for research papers on quantum computing",
-                'topics': "What research topics are available to explore?",
-                'guide': "Give me a comprehensive research guide for artificial intelligence"
+            # Create prompts for users to specify their research topics
+            mcp_prompts = {
+                'search': "🔍 What research topic would you like to search papers for?\n\nJust type your topic and I'll find the latest papers!",
+                'topics': "📁 Let me show you what research topics are available to explore.",
+                'guide': "🗺️ What topic would you like a comprehensive research guide for?\n\nJust type your topic and I'll provide structured research guidance!"
             }
             
-            question = mcp_questions.get(action, "What would you like to research?")
+            prompt = mcp_prompts.get(action, "What would you like to research?")
             
-            # Send the question
-            query.message.reply_text(f"🔧 {question}")
+            # Send the prompt to user
+            query.message.reply_text(prompt)
             
-            # Create context for processing
-            fake_context = type('Context', (), {})() 
-            fake_context.args = question.split()
-            
-            # Create a new update object
-            fake_update = type('Update', (), {})()  
-            fake_update.effective_user = query.from_user
-            fake_update.effective_chat = query.message.chat
-            fake_update.message = query.message
-            
-            # Get user's last model preference
-            udata = get_user_data(user_id)
-            last_model = udata.get('last_model', 'llama')
-            
-            if last_model == 'deepseek':
-                deepseek_command(fake_update, fake_context)
-            else:
-                llama_command(fake_update, fake_context)
+            # For 'topics', immediately trigger the MCP tool since no user input needed
+            if action == 'topics':
+                question = "What research topics are available to explore?"
+                
+                # Create context for processing
+                fake_context = type('Context', (), {})() 
+                fake_context.args = question.split()
+                
+                # Create a new update object
+                fake_update = type('Update', (), {})()  
+                fake_update.effective_user = query.from_user
+                fake_update.effective_chat = query.message.chat
+                fake_update.message = query.message
+                
+                # Get user's last model preference
+                udata = get_user_data(user_id)
+                last_model = udata.get('last_model', 'llama')
+                
+                if last_model == 'deepseek':
+                    deepseek_command(fake_update, fake_context)
+                else:
+                    llama_command(fake_update, fake_context)
         
     elif callback_data.startswith('hint_') or callback_data.startswith('onboard_'):
         parts = callback_data.split('_')
