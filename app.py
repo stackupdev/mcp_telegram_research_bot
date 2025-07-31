@@ -1129,41 +1129,67 @@ def send_interactive_hints(update, response: str, tools_used: list = None):
 
 def generate_button_labels_from_hints(hints: list) -> list:
     """
-    Generate simple, direct button labels from hint questions.
+    Generate button labels from hint questions using LLM.
     """
     if not hints:
         return []
     
+    try:
+        client = Groq()
+        
+        prompt = """Generate concise button labels (max 20 chars each) for these follow-up questions:
+
+{}
+
+Format as a list, one label per line. Make each label actionable and specific to the question content. Include relevant emojis."""
+        
+        completion = client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[
+                {"role": "system", "content": "You are a UX expert that creates concise, actionable button labels for research questions."},
+                {"role": "user", "content": prompt.format('\n'.join(hints))}
+            ],
+            max_tokens=150,
+            temperature=0.7
+        )
+        
+        response = completion.choices[0].message.content
+        if not response:
+            return generate_fallback_button_labels(hints)
+        
+        # Parse labels from response
+        labels = []
+        for line in response.strip().split('\n'):
+            line = line.strip()
+            if line:
+                # Remove any numbering or bullets
+                line = line.lstrip('1234567890.- ')
+                labels.append(line[:25])  # Limit length
+        
+        return labels[:len(hints)]  # Match number of hints
+        
+    except Exception as e:
+        print(f"Error generating button labels: {e}")
+        return generate_fallback_button_labels(hints)
+
+def generate_fallback_button_labels(hints: list) -> list:
+    """
+    Fallback button labels when LLM generation fails.
+    """
+    fallback_labels = [
+        "🔍 Explore More",
+        "📚 Deep Dive", 
+        "🔬 Research",
+        "💡 Learn More",
+        "🚀 Next Steps"
+    ]
+    
     labels = []
     for i, hint in enumerate(hints):
-        # Extract key terms and create simple labels
-        hint_lower = hint.lower()
-        
-        # Simple keyword-based labeling
-        if 'latest' in hint_lower or 'recent' in hint_lower or 'new' in hint_lower:
-            labels.append("🔥 Latest Research")
-        elif 'compare' in hint_lower or 'vs' in hint_lower or 'difference' in hint_lower:
-            labels.append("⚖️ Compare Options")
-        elif 'application' in hint_lower or 'use' in hint_lower or 'practical' in hint_lower:
-            labels.append("🔧 Applications")
-        elif 'method' in hint_lower or 'approach' in hint_lower or 'technique' in hint_lower:
-            labels.append("📋 Methods")
-        elif 'future' in hint_lower or 'trend' in hint_lower or 'direction' in hint_lower:
-            labels.append("🚀 Future Trends")
-        elif 'challenge' in hint_lower or 'problem' in hint_lower or 'issue' in hint_lower:
-            labels.append("⚠️ Challenges")
-        elif 'benefit' in hint_lower or 'advantage' in hint_lower or 'impact' in hint_lower:
-            labels.append("✅ Benefits")
-        elif 'example' in hint_lower or 'case' in hint_lower:
-            labels.append("📝 Examples")
-        elif 'how' in hint_lower and ('work' in hint_lower or 'function' in hint_lower):
-            labels.append("⚙️ How It Works")
-        elif 'what' in hint_lower and ('is' in hint_lower or 'are' in hint_lower):
-            labels.append("❓ What Is It")
+        if i < len(fallback_labels):
+            labels.append(fallback_labels[i])
         else:
-            # Generic fallback based on position
-            fallbacks = ["💡 More Info", "🔍 Deep Dive", "📚 Learn More", "🎯 Details", "🔬 Research"]
-            labels.append(fallbacks[i % len(fallbacks)])
+            labels.append(f"🔍 Option {i+1}")
     
     return labels
 
@@ -1229,16 +1255,16 @@ def generate_onboarding_button_labels(questions: list) -> list:
     try:
         client = Groq()
         
-        prompt = """Generate concise button labels for the following research questions:
-        
+        prompt = """Generate concise button labels (max 30 chars each) for these research questions:
+
 {}
-        
-Format as a list, one label per line, without numbering or bullets. Make each label specific to the content and designed to trigger helpful tool usage."""
+
+Format as a list, one label per line. Make each label specific and actionable. Include relevant emojis."""
         
         completion = client.chat.completions.create(
             model="llama-3.1-8b-instant",
             messages=[
-                {"role": "system", "content": "You are a research assistant that generates concise button labels for research topics."},
+                {"role": "system", "content": "You are a UX expert that creates concise, actionable button labels for research topics."},
                 {"role": "user", "content": prompt.format('\n'.join(questions))}
             ],
             max_tokens=200,
@@ -1247,20 +1273,49 @@ Format as a list, one label per line, without numbering or bullets. Make each la
         
         response = completion.choices[0].message.content
         if not response:
-            return []
+            return generate_onboarding_fallback_labels(questions)
         
         # Parse labels from response
         labels = []
         for line in response.strip().split('\n'):
             line = line.strip()
             if line:
-                labels.append(line)
+                # Remove any numbering or bullets
+                line = line.lstrip('1234567890.- ')
+                labels.append(line[:35])  # Limit length for mobile
         
-        return labels[:len(questions)]  # Limit to number of questions
+        # Ensure we have labels for all questions
+        while len(labels) < len(questions):
+            labels.append(f"🔬 Research Topic {len(labels)+1}")
+        
+        return labels[:len(questions)]  # Match number of questions
         
     except Exception as e:
         print(f"Error generating onboarding button labels: {e}")
-        return []
+        return generate_onboarding_fallback_labels(questions)
+
+def generate_onboarding_fallback_labels(questions: list) -> list:
+    """
+    Fallback button labels for onboarding when LLM generation fails.
+    """
+    fallback_labels = [
+        "🤖 AI Research",
+        "⚛️ Quantum Tech", 
+        "🧬 Biotech",
+        "🌍 Climate Science",
+        "🚀 Space Tech",
+        "💡 Innovation",
+        "🔬 Science"
+    ]
+    
+    labels = []
+    for i in range(len(questions)):
+        if i < len(fallback_labels):
+            labels.append(fallback_labels[i])
+        else:
+            labels.append(f"🔬 Topic {i+1}")
+    
+    return labels
 
 def send_onboarding_research_suggestions(update):
     """
