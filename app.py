@@ -8,6 +8,7 @@ from telegram import Update, Bot, ReplyKeyboardMarkup, KeyboardButton, InlineKey
 from telegram.ext import Dispatcher, CommandHandler, MessageHandler, CallbackQueryHandler, Filters
 from mcp.client.sse import sse_client
 from mcp.client.session import ClientSession
+from combined_research import search_and_extract_papers
 
 # Flask app initialization
 app = Flask(__name__)
@@ -369,6 +370,8 @@ def get_research_prompt(topic: str, num_papers: int = 10) -> str:
         # Fallback prompt for reliability
         return f"Search for {num_papers} academic papers about '{topic}' and provide a comprehensive analysis including key findings, methodologies, and research trends."
 
+# search_and_extract_papers function is now imported from combined_research.py
+
 # ============================================================================
 # FUNCTION CALLING INFRASTRUCTURE
 # ============================================================================
@@ -378,8 +381,30 @@ MCP_TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "search_and_extract_papers",
+            "description": "Search for academic papers and automatically extract detailed information for each. This is the preferred method for comprehensive research queries. Returns beautifully formatted results with arXiv IDs and PDF URLs.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "topic": {
+                        "type": "string",
+                        "description": "The research topic to search for (e.g., 'quantum computing', 'machine learning', 'neural networks')"
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "description": "Maximum number of papers to return (default: 10, max: 10)",
+                        "default": 10
+                    }
+                },
+                "required": ["topic"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "search_papers",
-            "description": "Search for academic papers on ArXiv by topic. Use this when the user asks about research papers, recent studies, or wants to find papers on a specific topic.",
+            "description": "Search for academic papers on ArXiv by topic only (returns just paper IDs). Use search_and_extract_papers instead for better results.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -486,7 +511,32 @@ def execute_function_call(function_name: str, arguments: dict):
         if not isinstance(arguments, dict):
             arguments = {}
         
-        if function_name == "search_papers":
+        if function_name == "search_and_extract_papers":
+            topic = arguments.get("topic")
+            if not topic or not isinstance(topic, str):
+                return {
+                    "success": False,
+                    "function": function_name,
+                    "error": "Topic parameter is required and must be a string"
+                }
+            
+            max_results = arguments.get("max_results", 10)
+            try:
+                max_results = int(max_results)
+                max_results = max(1, min(max_results, 10))  # Clamp between 1-10
+            except (ValueError, TypeError):
+                max_results = 10
+            
+            result = search_and_extract_papers(topic, max_results)
+            
+            return {
+                "success": True,
+                "function": function_name,
+                "result": result,
+                "summary": f"Found and extracted detailed information for papers on '{topic}'"
+            }
+            
+        elif function_name == "search_papers":
             topic = arguments.get("topic")
             if not topic or not isinstance(topic, str):
                 return {
@@ -910,29 +960,25 @@ def format_deepseek_thinking(text: str) -> str:
 
 def generate_llm_follow_up_hints(conversation_context: str, last_response: str, tools_used: list = None) -> list:
     """
-    Simplified hint generation - no longer needed with direct tool buttons.
-    Returns basic fallback questions for backward compatibility.
+    Simplified hint generation - redundant options removed.
+    Returns essential fallback questions for backward compatibility.
     """
-    # Since we now use direct tool buttons, this function is simplified
-    # Return basic research questions as fallback
+    # Since search and paper info are now automatic, only essential actions remain
     return [
-        "🔍 What would you like to search for next?",
         "📁 Explore other research topics?", 
-        "📄 Get details about a specific paper?",
-        "🎯 Need research guidance?"
+        "🎯 Need research guidance?",
+        "🔍 Continue with another search?"
     ]
 
 def send_interactive_hints(update, response: str, tools_used: list = None):
     """
-    Send simplified research action buttons with no overlapping functionality.
+    Send essential research action buttons - redundant functions removed.
     """
     user_id = update.effective_user.id
     
-    # Simplified action buttons - removed overlapping functionality
+    # Essential action buttons only - search and paper info now handled automatically
     keyboard = [
-        [InlineKeyboardButton("🔍 Search Papers", callback_data=f"direct_search_{user_id}")],
         [InlineKeyboardButton("📁 Browse Topics", callback_data=f"direct_topics_{user_id}")],
-        [InlineKeyboardButton("📄 Paper Info", callback_data=f"direct_paper_{user_id}")],
         [InlineKeyboardButton("🎯 Research Guide", callback_data=f"direct_guide_{user_id}")]
     ]
     
@@ -1064,16 +1110,10 @@ def handle_hint_callback(update, context):
     callback_data = query.data
     user_id = update.effective_user.id
     
-    # Simplified action routing
-    if callback_data.startswith('direct_search_'):
-        query.message.reply_text("🔍 What research topic would you like to search for?\n\nJust type your topic and I'll find the latest papers!")
-        
-    elif callback_data.startswith('direct_topics_'):
+    # Essential action routing - redundant handlers removed
+    if callback_data.startswith('direct_topics_'):
         # Execute topics command directly
         topics_command(update, context)
-        
-    elif callback_data.startswith('direct_paper_'):
-        query.message.reply_text("📄 Please provide a paper ID or title to get detailed information.")
         
     elif callback_data.startswith('direct_guide_'):
         query.message.reply_text("🎯 What research topic would you like a structured guide for?")
