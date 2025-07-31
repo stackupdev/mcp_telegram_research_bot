@@ -1149,9 +1149,27 @@ def send_onboarding_research_suggestions(update):
     # Generate button labels using LLM
     button_labels = generate_onboarding_button_labels(research_questions)
     
-    for i, (question, button_text) in enumerate(zip(research_questions, button_labels)):
+    # Ensure we have the same number of labels as topics
+    # If LLM generated fewer labels, pad with the original topic names
+    while len(button_labels) < len(research_questions):
+        missing_index = len(button_labels)
+        # Use the original topic name with a default emoji
+        button_labels.append(f"🔬 {research_questions[missing_index]}")
+    
+    # Create buttons and store exact topic mapping
+    topic_button_mapping = {}
+    
+    for i, question in enumerate(research_questions):
+        # Use the corresponding button label, or fallback to the question itself
+        button_text = button_labels[i] if i < len(button_labels) else f"🔬 {question}"
         callback_data = f"onboard_{i}_{user_id}"
         keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
+        
+        # Store the exact mapping for debugging
+        topic_button_mapping[i] = {
+            'topic': question,
+            'button_text': button_text
+        }
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
@@ -1162,9 +1180,15 @@ def send_onboarding_research_suggestions(update):
         reply_markup=reply_markup
     )
     
-    # Store onboarding questions in user data for callback handling
+    # Store both onboarding questions and the exact mapping for callback handling
     udata = get_user_data(user_id)
     udata['onboarding_questions'] = research_questions
+    udata['onboarding_mapping'] = topic_button_mapping
+    
+    # Debug logging
+    print(f"DEBUG: Generated {len(research_questions)} topics and {len(button_labels)} labels")
+    for i, (topic, label) in enumerate(zip(research_questions, button_labels)):
+        print(f"DEBUG: Button {i}: '{label}' -> Topic: '{topic}'")
 
 def handle_hint_callback(update, context):
     """
@@ -1192,12 +1216,18 @@ def handle_hint_callback(update, context):
             
             if callback_data.startswith('onboard_'):
                 topics = udata.get('onboarding_questions', [])
+                mapping = udata.get('onboarding_mapping', {})
+                print(f"DEBUG: Onboarding callback - Index: {hint_index}, Available topics: {len(topics)}")
+                if hint_index in mapping:
+                    print(f"DEBUG: Button mapping - Button: '{mapping[hint_index]['button_text']}' -> Topic: '{mapping[hint_index]['topic']}'")
             else:
                 topics = udata.get('current_hints', [])
+                print(f"DEBUG: Regular hint callback - Index: {hint_index}, Available topics: {len(topics)}")
             
             if hint_index < len(topics):
                 # Topic is now a simple name (e.g., "Quantum Computing")
                 topic = topics[hint_index].strip()
+                print(f"DEBUG: Retrieved topic at index {hint_index}: '{topic}'")  
                 
                 # Check if auto-research is enabled for this user
                 auto_research_enabled = udata.get('auto_research', True)
@@ -1238,7 +1268,7 @@ def handle_hint_callback(update, context):
                         send_progressive_research_update(fake_update, "search_papers", "completed", f"Found {len(paper_ids)} papers")
                         send_progressive_research_update(fake_update, "extract_info", "starting", "Extracting paper details")
                         
-                        response = f"📚 **Recent papers on {topic}:**\n\n"
+                        response = f"📚 Recent papers on {topic}:\n\n"
                         
                         for i, paper_id in enumerate(paper_ids[:10], 1):
                             try:
@@ -1247,19 +1277,20 @@ def handle_hint_callback(update, context):
                                 
                                 paper_info = extract_info(paper_id)
                                 if isinstance(paper_info, dict) and 'error' not in paper_info:
-                                    title = paper_info.get('title', 'Unknown Title')[:80] + ('...' if len(paper_info.get('title', '')) > 80 else '')
+                                    title = paper_info.get('title', 'Unknown Title')  # No truncation
                                     authors = ', '.join(paper_info.get('authors', [])[:2])
                                     if len(paper_info.get('authors', [])) > 2:
                                         authors += ' et al.'
                                     
                                     published = paper_info.get('published', 'Unknown')
                                     pdf_url = paper_info.get('pdf_url', '')
+                                    summary = paper_info.get('summary', 'No summary available')
                                     
-                                    response += f"{i}. **{title}**\n"
+                                    response += f"{i}. {title}\n"  # No bold formatting
                                     response += f"   Authors: {authors} ({published})\n"
                                     if pdf_url:
                                         response += f"   [📄 PDF]({pdf_url})\n"
-                                    response += f"\n"
+                                    response += f"   Summary: {summary}\n\n"  # Include full summary
                                 else:
                                     response += f"{i}. Paper ID: `{paper_id}`\n\n"
                             except Exception:
