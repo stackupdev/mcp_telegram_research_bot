@@ -1180,7 +1180,7 @@ def send_onboarding_research_suggestions(update):
         # Send message with trending research topics
         send_telegram_message(
             update,
-            "🔥 **Trending Research Topics** - Click to explore:",
+            "🔥 Trending Research Topics - Click to explore:",
             reply_markup=reply_markup
         )
         
