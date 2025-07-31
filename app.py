@@ -1192,6 +1192,21 @@ def handle_hint_callback(update, context):
                 # Topic is now a simple name (e.g., "Quantum Computing")
                 topic = topics[hint_index].strip()
                 
+                # Check if auto-research is enabled for this user
+                auto_research_enabled = udata.get('auto_research', True)
+                
+                if not auto_research_enabled:
+                    # Research is disabled, inform user
+                    query.message.reply_text(
+                        f"🔬 Research mode is currently OFF.\n\n"
+                        f"To search for papers on '{topic}', please:\n"
+                        f"1. Enable research mode by clicking the 🔬 Research toggle button\n"
+                        f"2. Or use the manual command: `/search {topic}`\n\n"
+                        f"Research mode affects automatic paper searching when chatting with AI assistants.",
+                        parse_mode='Markdown'
+                    )
+                    return
+                
                 # Execute direct search using the topic name with progressive feedback
                 try:
                     # Create a fake update object for progressive feedback
