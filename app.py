@@ -1351,6 +1351,11 @@ def start(update, context):
     )
 
 def help_command(update, context):
+    user_id = update.effective_user.id
+    
+    # Create keyboard with chat options and research toggle
+    reply_markup = update_keyboard(user_id)
+    
     send_telegram_message(update,
         "🤖 Inquisita Spark Research Assistant Help\n\n" +
         "🧠 Smart Chat (Recommended):\n" +
@@ -1365,7 +1370,8 @@ def help_command(update, context):
         "/prompt <topic> - Generate comprehensive research prompt\n\n" +
         "🔧 Utility Commands:\n" +
         "/reset - Clear conversation history\n" +
-        "/help - Show this help message\n\n" 
+        "/help - Show this help message\n\n",
+        reply_markup=reply_markup
     )
 
 def toggle_research_callback(update, context):
