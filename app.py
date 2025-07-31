@@ -1266,33 +1266,64 @@ def handle_hint_callback(update, context):
             if hint_index < len(questions):
                 question = questions[hint_index]
                 
-                # Remove emoji prefix from the question for cleaner display
+                # Extract topic from the research question for direct search
+                # Remove common question words and extract the core topic
                 clean_question = question.split(' ', 1)[1] if ' ' in question else question
                 
-                # Send the question as if the user asked it
-                query.message.reply_text(f"💬 {clean_question}")
+                # Extract topic keywords from the question
+                # Remove question words like "What are", "How does", etc.
+                topic_words = clean_question.lower()
+                for phrase in ["what are the latest developments in", "what are recent advances in", 
+                              "how does", "what is", "explain", "research on", "studies about"]:
+                    topic_words = topic_words.replace(phrase, "").strip()
                 
-                # Create a fake context with the question as args
-                fake_context = type('Context', (), {})() 
-                fake_context.args = clean_question.split()
+                # Clean up the topic
+                topic = topic_words.replace("?", "").replace("research", "").strip()
+                if not topic:
+                    topic = "artificial intelligence"  # fallback
                 
-                # Create a new update object for the question
-                fake_update = type('Update', (), {})()  
-                fake_update.effective_user = query.from_user
-                fake_update.effective_chat = query.message.chat
-                fake_update.message = query.message
-                
-                # For onboarding, default to llama; for hints, use last model
-                if callback_data.startswith('onboard_'):
-                    last_model = 'llama'  # Default for new users
-                else:
-                    last_model = udata.get('last_model', 'llama')
-                
-                if last_model == 'deepseek':
-                    # Process as deepseek command
-                    deepseek_command(fake_update, fake_context)
-                else:
-                    # Process as llama command (default)
+                # Execute direct search command instead of AI conversation
+                try:
+                    # Call search_papers to get paper IDs
+                    paper_ids = search_papers(topic, 10)  # Get 10 papers
+                    
+                    if paper_ids:
+                        response = f"📚 **Recent papers on {topic.title()}:**\n\n"
+                        
+                        # Get details for each paper using extract_info
+                        for i, paper_id in enumerate(paper_ids[:10], 1):
+                            try:
+                                paper_info = extract_info(paper_id)
+                                if isinstance(paper_info, dict) and 'error' not in paper_info:
+                                    # Successfully got paper info
+                                    title = paper_info.get('title', 'Unknown Title')[:80] + ('...' if len(paper_info.get('title', '')) > 80 else '')
+                                    authors = ', '.join(paper_info.get('authors', [])[:2])  # First 2 authors
+                                    if len(paper_info.get('authors', [])) > 2:
+                                        authors += ' et al.'
+                                    
+                                    published = paper_info.get('published', 'Unknown')
+                                    pdf_url = paper_info.get('pdf_url', '')
+                                    
+                                    response += f"{i}. **{title}**\n"
+                                    response += f"   Authors: {authors} ({published})\n"
+                                    if pdf_url:
+                                        response += f"   [📄 PDF]({pdf_url})\n"
+                                    response += f"\n"
+                                else:
+                                    # Fallback if extract_info fails
+                                    response += f"{i}. Paper ID: `{paper_id}`\n\n"
+                            except Exception:
+                                # Fallback if extract_info fails
+                                response += f"{i}. Paper ID: `{paper_id}`\n\n"
+                        
+                        # No additional instruction needed - all info is shown
+                    else:
+                        response = f"❌ No papers found for '{topic}'. Try a different research area."
+                    
+                    query.message.reply_text(response, parse_mode='Markdown')
+                    
+                except Exception as e:
+                    query.message.reply_text(f"❌ Error searching for papers on '{topic}': {str(e)}")
                     llama_command(fake_update, fake_context)
 
 def get_deepseek_reply(messages: list, enable_tools: bool = True, update=None) -> str:
