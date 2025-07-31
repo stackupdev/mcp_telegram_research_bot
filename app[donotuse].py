@@ -1,7 +1,6 @@
 import os
 import json
 import asyncio
-import re
 from typing import List
 from flask import Flask, render_template, request, jsonify
 from groq import Groq
@@ -9,28 +8,7 @@ from telegram import Update, Bot, ReplyKeyboardMarkup, KeyboardButton, InlineKey
 from telegram.ext import Dispatcher, CommandHandler, MessageHandler, CallbackQueryHandler, Filters
 from mcp.client.sse import sse_client
 from mcp.client.session import ClientSession
-
-# Import tool integration helpers
-try:
-    from tool_integration_helpers import (
-        get_tool_flow_suggestions,
-        generate_tool_aware_fallback_questions,
-        predict_next_tool_from_question,
-        enhance_question_with_tool_context
-    )
-except ImportError:
-    # Fallback functions if helper file is not available
-    def get_tool_flow_suggestions(tools_used, response_content):
-        return {'immediate_next_steps': [], 'exploration_paths': [], 'deep_dive_options': []}
-    
-    def generate_tool_aware_fallback_questions(tools_used):
-        return ["💡 What would you like to explore next?", "🔍 Search for more information?", "📚 Explore related topics?"]
-    
-    def predict_next_tool_from_question(question):
-        return 'search_papers'
-    
-    def enhance_question_with_tool_context(question, predicted_tool):
-        return question
+# Combined research function moved inline to reduce file complexity
 
 # Flask app initialization
 app = Flask(__name__)
@@ -280,15 +258,15 @@ def get_available_folders():
 
 def get_topic_papers(topic: str):
     """
-    Call the remote MCP server to get all papers for a topic.
-    Returns: List of paper dictionaries
+    Get all papers for a topic using optimized MCP resource access.
+    Returns: List of paper dictionaries with structured data
     """
     if not mcp_client_factory:
         print("MCP client factory not initialized")
         return []
     
     try:
-        # Get the topic papers resource via MCP using async helper
+        # Use MCP resource for efficient topic paper retrieval
         topic_formatted = topic.lower().replace(" ", "_")
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -298,148 +276,184 @@ def get_topic_papers(topic: str):
         # Handle MCP ReadResourceResult object
         text_content = None
         if hasattr(result, 'contents') and result.contents:
-            # Extract text from the first content item
             first_content = result.contents[0]
             if hasattr(first_content, 'text'):
                 text_content = first_content.text
         elif isinstance(result, str):
             text_content = result
         
-        if not text_content:
-            return []
-            
-        # Check for no papers message
-        if "No papers found" in text_content or "No topics found" in text_content:
+        if not text_content or "No papers found" in text_content:
             return []
         
-        # Parse the markdown content to extract paper information
+        # Optimized parsing for structured paper data
         papers = []
         lines = text_content.split('\n')
         current_paper = {}
-        in_summary = False
         
         for line in lines:
             line = line.strip()
             
             if line.startswith('## ') and not line.startswith('## Papers on'):
-                # New paper title
-                if current_paper and 'title' in current_paper:
+                # Save previous paper and start new one
+                if current_paper.get('title'):
                     papers.append(current_paper)
                 current_paper = {'title': line[3:]}
-                in_summary = False
                 
             elif line.startswith('- **Paper ID**:'):
                 paper_id = line.split(':', 1)[1].strip()
                 current_paper['id'] = paper_id
                 current_paper['entry_id'] = f"https://arxiv.org/abs/{paper_id}"
-                in_summary = False
                 
             elif line.startswith('- **Authors**:'):
                 authors_str = line.split(':', 1)[1].strip()
                 current_paper['authors'] = [author.strip() for author in authors_str.split(',')]
-                in_summary = False
                 
             elif line.startswith('- **Published**:'):
                 current_paper['published'] = line.split(':', 1)[1].strip()
-                in_summary = False
                 
             elif line.startswith('- **PDF URL**:'):
-                # Extract URL from markdown link format [url](url)
+                # Extract URL from markdown link [url](url)
                 url_part = line.split(':', 1)[1].strip()
-                if '[' in url_part and '](' in url_part:
-                    current_paper['pdf_url'] = url_part.split('](')[1].rstrip(')')
-                else:
-                    current_paper['pdf_url'] = url_part
-                in_summary = False
+                if '](' in url_part:
+                    url = url_part.split('](')[1].rstrip(')')
+                    current_paper['pdf_url'] = url
                     
             elif line.startswith('### Summary'):
-                # Start collecting summary lines
-                in_summary = True
-                current_paper['summary'] = ''
-                continue
+                # Next non-empty line will be summary
+                current_paper['summary'] = ""
                 
-            elif in_summary and line:
-                # Collect all summary lines - be more permissive about what we collect
-                # Stop only on clear section boundaries
-                if line.startswith('## ') and not line.startswith('## Papers on'):
-                    # This is a new paper, stop collecting summary
-                    in_summary = False
-                    # Process this line as a new paper title
-                    if current_paper and 'title' in current_paper:
-                        papers.append(current_paper)
-                    current_paper = {'title': line[3:]}
-                elif line.startswith('---') or line.startswith('Total papers:'):
-                    # End of section
-                    in_summary = False
-                else:
-                    # Continue collecting summary text
-                    if 'summary' not in current_paper:
-                        current_paper['summary'] = ''
-                    if current_paper['summary']:
-                        current_paper['summary'] += ' '
-                    current_paper['summary'] += line.replace('...', '').strip()
-                
-            elif line.startswith('## ') and not line.startswith('## Papers on'):
-                # New paper title (handle case where we're not in summary mode)
-                if not in_summary:
-                    if current_paper and 'title' in current_paper:
-                        papers.append(current_paper)
-                    current_paper = {'title': line[3:]}
-                in_summary = False
-                
-            elif line.startswith('---') or line.startswith('Total papers:'):
-                # End of current paper or section
-                in_summary = False
+            elif current_paper.get('summary') == "" and line and not line.startswith('#') and not line.startswith('-'):
+                # Capture summary content
+                current_paper['summary'] = line.replace('...', '').strip()
         
-        # Don't forget the last paper
-        if current_paper and 'title' in current_paper:
+        # Add final paper
+        if current_paper.get('title'):
             papers.append(current_paper)
         
         return papers
+        
     except Exception as e:
-        print(f"Error calling get_topic_papers via MCP: {e}")
+        print(f"Error getting topic papers via MCP: {e}")
         return []
 
 def get_research_prompt(topic: str, num_papers: int = 10) -> str:
     """
-    Get a structured research prompt from the MCP server for enhanced AI research.
-    This uses the MCP prompt primitive to generate comprehensive research instructions.
+    Get a structured research prompt using MCP prompt primitive for enhanced AI research.
     """
     if not mcp_client_factory:
         print("MCP client factory not initialized")
         return f"Search for {num_papers} academic papers about '{topic}' and provide a comprehensive analysis."
     
     try:
-        # Access the generate_search_prompt via MCP
-        print(f"Getting research prompt for topic: {topic}")
+        # Use MCP prompt primitive for optimized research guidance
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         result = loop.run_until_complete(call_mcp_tool("generate_search_prompt", topic=topic, num_papers=num_papers))
         loop.close()
         
-        print(f"Prompt result: {result}")
-        
-        # Extract prompt content
+        # Extract prompt content from MCP result
         if hasattr(result, 'content') and result.content:
-            content = result.content
-            if isinstance(content, list) and len(content) > 0:
-                first_item = content[0]
-                if hasattr(first_item, 'text'):
-                    return first_item.text
-                else:
-                    return str(first_item)
+            if isinstance(result.content, list) and result.content:
+                return result.content[0].get('text', str(result.content[0]))
+            elif isinstance(result.content, str):
+                return result.content
             else:
-                return str(content)
+                return str(result.content)
         elif isinstance(result, str):
             return result
         else:
-            # Fallback to basic prompt
-            return f"Search for {num_papers} academic papers about '{topic}' and provide a comprehensive analysis."
+            # Fallback if MCP prompt fails
+            return f"Search for {num_papers} academic papers about '{topic}' and provide a comprehensive analysis including key findings, methodologies, and research trends."
             
     except Exception as e:
         print(f"Error getting research prompt via MCP: {e}")
-        # Fallback to basic prompt
-        return f"Search for {num_papers} academic papers about '{topic}' and provide a comprehensive analysis."
+        # Fallback prompt for reliability
+        return f"Search for {num_papers} academic papers about '{topic}' and provide a comprehensive analysis including key findings, methodologies, and research trends."
+
+def search_and_extract_papers(topic: str, max_results: int = 10) -> str:
+    """
+    Combined function that searches for papers and extracts detailed info for each.
+    Returns beautifully formatted results with arXiv numbers and PDF URLs.
+    """
+    if not mcp_client_factory:
+        return "❌ MCP client not initialized"
+    
+    try:
+        # Step 1: Search for papers
+        paper_ids = search_papers(topic, max_results)
+        
+        if not paper_ids:
+            return f"📝 No papers found for topic '{topic}'. Try a different search term."
+        
+        # Step 2: Extract detailed info for each paper
+        detailed_papers = []
+        for paper_id in paper_ids:
+            paper_info = extract_info(paper_id)
+            if paper_info and not (isinstance(paper_info, dict) and paper_info.get('error')):
+                try:
+                    # Handle different return types from extract_info
+                    if isinstance(paper_info, str):
+                        # Check for error messages in string format
+                        if paper_info.startswith("There's no saved information"):
+                            continue
+                        paper_data = json.loads(paper_info)
+                    elif isinstance(paper_info, dict):
+                        # Check for error in dict format
+                        if 'error' in paper_info:
+                            continue
+                        paper_data = paper_info
+                    else:
+                        continue
+                    
+                    detailed_papers.append({
+                        'id': paper_id,
+                        'data': paper_data
+                    })
+                except json.JSONDecodeError:
+                    # If parsing fails, skip this paper
+                    continue
+        
+        if not detailed_papers:
+            return f"📄 Found {len(paper_ids)} papers for '{topic}' but couldn't extract detailed information. The papers may need to be processed first."
+        
+        # Step 3: Format results beautifully
+        response = f"🔬 **Research Results for '{topic}'**\n"
+        response += f"Found {len(detailed_papers)} papers with detailed information:\n\n"
+        
+        for i, paper in enumerate(detailed_papers, 1):
+            paper_data = paper['data']
+            paper_id = paper['id']
+            
+            response += f"**{i}. {paper_data.get('title', 'Unknown Title')}**\n"
+            response += f"📋 **arXiv ID:** `{paper_id}` (tap to copy)\n"
+            response += f"👥 **Authors:** {', '.join(paper_data.get('authors', [])[:3])}{'...' if len(paper_data.get('authors', [])) > 3 else ''}\n"
+            response += f"📅 **Published:** {paper_data.get('published', 'Unknown')}\n"
+            
+            # Make PDF URL easily accessible
+            pdf_url = paper_data.get('pdf_url', '')
+            if pdf_url:
+                response += f"📄 **PDF:** [Download Paper]({pdf_url})\n"
+            
+            # Add summary preview
+            summary = paper_data.get('summary', '')
+            if summary:
+                # Truncate summary to first 200 characters
+                summary_preview = summary[:200] + "..." if len(summary) > 200 else summary
+                response += f"📖 **Summary:** {summary_preview}\n"
+            
+            response += "\n" + "─" * 40 + "\n\n"
+        
+        # Add helpful footer
+        response += "💡 **Quick Actions:**\n"
+        response += "• Tap any arXiv ID to copy it\n"
+        response += "• Click PDF links to download papers\n"
+        response += "• Use the buttons below for more research options"
+        
+        return response
+        
+    except Exception as e:
+        print(f"Error in search_and_extract_papers: {e}")
+        return f"❌ Error searching papers: {str(e)}"
 
 # ============================================================================
 # FUNCTION CALLING INFRASTRUCTURE
@@ -450,8 +464,30 @@ MCP_TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "search_and_extract_papers",
+            "description": "Search for academic papers and automatically extract detailed information for each. This is the preferred method for comprehensive research queries. Returns beautifully formatted results with arXiv IDs and PDF URLs.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "topic": {
+                        "type": "string",
+                        "description": "The research topic to search for (e.g., 'quantum computing', 'machine learning', 'neural networks')"
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "description": "Maximum number of papers to return (default: 10, max: 10)",
+                        "default": 10
+                    }
+                },
+                "required": ["topic"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "search_papers",
-            "description": "Search for academic papers on ArXiv by topic. Use this when the user asks about research papers, recent studies, or wants to find papers on a specific topic.",
+            "description": "Search for academic papers on ArXiv by topic only (returns just paper IDs). Use search_and_extract_papers instead for better results.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -558,7 +594,32 @@ def execute_function_call(function_name: str, arguments: dict):
         if not isinstance(arguments, dict):
             arguments = {}
         
-        if function_name == "search_papers":
+        if function_name == "search_and_extract_papers":
+            topic = arguments.get("topic")
+            if not topic or not isinstance(topic, str):
+                return {
+                    "success": False,
+                    "function": function_name,
+                    "error": "Topic parameter is required and must be a string"
+                }
+            
+            max_results = arguments.get("max_results", 10)
+            try:
+                max_results = int(max_results)
+                max_results = max(1, min(max_results, 10))  # Clamp between 1-10
+            except (ValueError, TypeError):
+                max_results = 10
+            
+            result = search_and_extract_papers(topic, max_results)
+            
+            return {
+                "success": True,
+                "function": function_name,
+                "result": result,
+                "summary": f"Found and extracted detailed information for papers on '{topic}'"
+            }
+            
+        elif function_name == "search_papers":
             topic = arguments.get("topic")
             if not topic or not isinstance(topic, str):
                 return {
@@ -980,489 +1041,128 @@ def format_deepseek_thinking(text: str) -> str:
     
     return formatted_text
 
-def generate_llm_follow_up_hints(conversation_context: str, last_response: str, tools_used: list = None) -> list:
-    """
-    Generate tool-aware contextual follow-up question hints using LLM intelligence.
-    Returns a list of AI-generated suggested questions optimized for MCP tool integration.
-    """
-    try:
-        client = Groq()
-        
-        # Build intelligent context about tools used and next logical steps
-        tools_context = ""
-        next_tool_suggestions = ""
-        
-        if tools_used:
-            tools_context = f"\nTools that were just executed: {', '.join(tools_used)}"
-            
-            # Map tools to logical next steps
-            tool_flow_map = {
-                'search_papers': [
-                    'extract_info (get details about specific papers)',
-                    'get_topic_papers (explore saved papers in this area)',
-                    'search_papers (search related topics)'
-                ],
-                'extract_info': [
-                    'search_papers (find similar or related papers)',
-                    'get_research_prompt (get structured research guidance)',
-                    'get_topic_papers (explore more papers in this topic)'
-                ],
-                'get_topic_papers': [
-                    'extract_info (get details about specific papers)',
-                    'search_papers (find newer papers in this area)',
-                    'get_research_prompt (get comprehensive research guidance)'
-                ],
-                'get_available_folders': [
-                    'get_topic_papers (explore papers in specific topics)',
-                    'search_papers (search for papers in interesting topics)',
-                    'get_research_prompt (get guidance for research planning)'
-                ],
-                'get_research_prompt': [
-                    'search_papers (execute the research plan)',
-                    'get_available_folders (see what topics are available)',
-                    'get_topic_papers (explore existing research collections)'
-                ]
-            }
-            
-            # Build next tool suggestions based on what was just used
-            suggested_next_tools = []
-            for tool in tools_used:
-                if tool in tool_flow_map:
-                    suggested_next_tools.extend(tool_flow_map[tool])
-            
-            if suggested_next_tools:
-                next_tool_suggestions = f"\nLogical next research steps: {', '.join(set(suggested_next_tools[:3]))}"
-        
-        # Create an enhanced prompt that considers tool integration
-        hint_prompt = f"""Based on this research conversation response, generate 3-4 intelligent follow-up questions that seamlessly integrate with the research tools available.
-
-Response that was just given:
-{last_response[:800]}...{tools_context}{next_tool_suggestions}
-
-Available research capabilities:
-- search_papers: Find new papers on any topic
-- extract_info: Get detailed info about specific papers (need ArXiv ID)
-- get_topic_papers: View previously saved papers for a topic
-- get_available_folders: See what research topics are available
-- get_research_prompt: Get structured research guidance
-
-Generate 3-4 specific, actionable follow-up questions that would:
-1. Naturally trigger the most useful research tools
-2. Build logically on what was just discovered
-3. Help users explore deeper or broader aspects
-4. Suggest practical next steps in their research journey
-
-Focus on questions that would benefit from:
-- Finding more papers (search_papers)
-- Getting paper details (extract_info)
-- Exploring related topics (get_topic_papers)
-- Comparing approaches or methodologies
-- Understanding practical applications
-- Identifying research trends or gaps
-
-Format as a simple list, one question per line, without numbering or bullets. Make each question specific to the content and designed to trigger helpful tool usage."""
-        
-        # Generate hints using LLM
-        completion = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=[
-                {"role": "system", "content": "You are a research assistant that generates intelligent follow-up questions to help users explore topics deeper. Generate specific, actionable questions that would naturally continue the research conversation."},
-                {"role": "user", "content": hint_prompt}
-            ],
-            max_tokens=200,
-            temperature=0.5
-        )
-        
-        response = completion.choices[0].message.content
-        if not response:
-            return []
-        
-        # Parse the response into individual questions with tool-aware emoji assignment
-        questions = []
-        for line in response.strip().split('\n'):
-            line = line.strip()
-            # Clean up any numbering or bullets that might have been added
-            line = re.sub(r'^[\d\-\*\•]\s*', '', line)
-            if line and len(line) > 10:  # Only include substantial questions
-                # Add tool-aware emoji based on content and likely tool usage
-                line_lower = line.lower()
-                
-                # Tool-specific emoji assignment
-                if any(word in line_lower for word in ['search', 'find', 'look for', 'papers on', 'research on']):
-                    line = f"🔍 {line}"  # search_papers likely
-                elif any(word in line_lower for word in ['details', 'more about', 'specific paper', 'paper id', 'arxiv']):
-                    line = f"📋 {line}"  # extract_info likely
-                elif any(word in line_lower for word in ['saved', 'existing', 'collection', 'topic papers']):
-                    line = f"📚 {line}"  # get_topic_papers likely
-                elif any(word in line_lower for word in ['available', 'topics', 'folders', 'what areas']):
-                    line = f"📁 {line}"  # get_available_folders likely
-                elif any(word in line_lower for word in ['guidance', 'how to research', 'research plan', 'approach']):
-                    line = f"🗺️ {line}"  # get_research_prompt likely
-                elif any(word in line_lower for word in ['compare', 'difference', 'versus', 'contrast']):
-                    line = f"⚖️ {line}"  # comparison analysis
-                elif any(word in line_lower for word in ['trend', 'latest', 'recent', 'new', 'developments']):
-                    line = f"📈 {line}"  # temporal analysis
-                elif any(word in line_lower for word in ['application', 'use', 'implement', 'practical']):
-                    line = f"🔧 {line}"  # practical applications
-                elif any(word in line_lower for word in ['methodology', 'method', 'approach', 'technique']):
-                    line = f"🔬 {line}"  # methodology focus
-                else:
-                    line = f"💡 {line}"  # general exploration
-                questions.append(line)
-        
-        return questions[:4]  # Limit to 4 questions
-        
-    except Exception as e:
-        print(f"Error generating LLM hints: {e}")
-        # Use tool-aware fallback questions based on what tools were just used
-        return generate_tool_aware_fallback_questions(tools_used or [])
-
-def send_interactive_hints(update, response: str, tools_used: list = None):
-    """
-    Generate and send intelligent, tool-aware follow-up hints as interactive buttons.
-    Uses tool flow suggestions to provide structured research guidance.
-    """
-    # Get LLM-generated hints
-    hints = generate_llm_follow_up_hints("", response, tools_used)
-    
-    # Get intelligent tool flow suggestions
-    tool_suggestions = get_tool_flow_suggestions(tools_used or [], response)
-    
-    if hints:
-        # Generate LLM-powered button labels from the hint questions
-        button_labels = generate_button_labels_from_hints(hints)
-        
-        # Create inline keyboard with LLM-generated button text
-        keyboard = []
-        for i, (hint, button_text) in enumerate(zip(hints, button_labels)):
-            callback_data = f"hint_{i}_{update.effective_user.id}"
-            keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
-        
-        # Add intelligent next-step suggestions if available
-        if tool_suggestions['immediate_next_steps']:
-            # Add a separator for next steps
-            keyboard.append([InlineKeyboardButton("——— Smart Next Steps ———", callback_data="separator")])
-            
-            # Add up to 2 immediate next step suggestions
-            for i, next_step in enumerate(tool_suggestions['immediate_next_steps'][:2]):
-                # Extract tool name and create smart button
-                if ' - ' in next_step:
-                    tool_name, description = next_step.split(' - ', 1)
-                    tool_emoji = {
-                        'extract_info': '📋',
-                        'search_papers': '🔍',
-                        'get_topic_papers': '📚',
-                        'get_available_folders': '📁',
-                        'get_research_prompt': '🗺️'
-                    }.get(tool_name, '🔧')
-                    
-                    button_text = f"{tool_emoji} {description[:35]}..."
-                    callback_data = f"smart_step_{i}_{update.effective_user.id}"
-                    keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
-        
-        # Always add an "arXiv Papers" button for direct paper search
-        arxiv_callback = f"arxiv_search_{update.effective_user.id}"
-        keyboard.append([InlineKeyboardButton("📄 arXiv Papers", callback_data=arxiv_callback)])
-        
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        # Create intelligent message based on tools used
-        if tools_used:
-            tools_text = ", ".join(tools_used)
-            message_text = f"🧠 Based on the {tools_text} results, here are intelligent next steps:"
-        else:
-            message_text = "💡 What to explore next? Click a question below:"
-        
-        # Send message with enhanced interactive buttons
-        send_telegram_message(
-            update, 
-            message_text, 
-            reply_markup=reply_markup
-        )
-        
-        # Store hints in user data for callback handling
-        user_id = update.effective_user.id
-        udata = get_user_data(user_id)
-        udata['current_hints'] = hints
-
-def generate_button_labels_from_hints(hints: list) -> list:
-    """
-    Generate concise, summarized questions from hint questions using LLM.
-    """
-    if not hints:
-        return []
-    
-    try:
-        client = Groq()
-        
-        # Create prompt for generating button labels
-        hints_text = "\n".join([f"{i+1}. {hint}" for i, hint in enumerate(hints)])
-        
-        label_prompt = f"""Convert these research questions into concise, summarized questions that fit on buttons (max 6-8 words each).
-
-Original Questions:
-{hints_text}
-
-For each question, create a shorter, clearer version that maintains the key meaning. Keep emojis. Format as:
-1. [emoji] [concise question]
-2. [emoji] [concise question]
-
-Examples:
-- "📄 What are the latest developments in quantum computing research?" → "📄 Latest quantum computing developments?"
-- "⚖️ How do different machine learning approaches compare in accuracy?" → "⚖️ Compare ML approach accuracy?"
-- "🔧 What are the practical applications of this technology?" → "🔧 Practical applications?"
-
-Make questions specific, actionable, and button-friendly (6-8 words max)."""
-        
-        completion = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=[
-                {"role": "system", "content": "You are an expert at creating concise, meaningful button labels for research topics. Always include relevant emojis."},
-                {"role": "user", "content": label_prompt}
-            ],
-            max_tokens=150,
-            temperature=0.3
-        )
-        
-        response = completion.choices[0].message.content
-        if not response:
-            return [f"💡 Option {i+1}" for i in range(len(hints))]
-        
-        # Parse the response into button labels
-        labels = []
-        for line in response.strip().split('\n'):
-            line = line.strip()
-            # Extract label after number and period
-            if '. ' in line:
-                label = line.split('. ', 1)[1]
-                labels.append(label)
-        
-        # Ensure we have the right number of labels
-        while len(labels) < len(hints):
-            labels.append(f"💡 Option {len(labels)+1}")
-        
-        return labels[:len(hints)]
-        
-    except Exception as e:
-        print(f"Error generating button labels: {e}")
-        # Fallback to generic labels
-        return [f"💡 Option {i+1}" for i in range(len(hints))]
+# send_interactive_hints function removed - no longer needed after inline button simplification
 
 def generate_onboarding_research_terms() -> list:
     """
-    Generate trending research terms for new users to explore.
+    Generate 5 random research categories for new users to explore.
+    Each category will be exactly two words with an emoji.
     """
     try:
         client = Groq()
         
-        onboarding_prompt = """Generate 4-5 trending research topics that would interest curious researchers in 2024. 
+        onboarding_prompt = """Generate exactly 5 diverse research categories for curious researchers. 
 
-Focus on cutting-edge areas like:
-- AI and machine learning advances
-- Quantum computing breakthroughs
-- Climate and sustainability tech
-- Biotechnology innovations
-- Space exploration
-- Renewable energy
+Each category must follow this EXACT format:
+[emoji] [Word1] [Word2]
 
-Format as simple research questions, one per line:
-What are the latest developments in [topic]?
-How is [technology] being applied in [field]?
+Examples:
+🤖 Artificial Intelligence
+🧬 Gene Therapy
+⚛️ Quantum Computing
+🌱 Climate Science
+🚀 Space Technology
 
-Make them specific and engaging for someone wanting to explore current research."""
+IMPORTANT: 
+- Use EXACTLY two words after the emoji
+- NO asterisks (**) or other formatting
+- One category per line
+- Produce 5 different categories"""
         
         completion = client.chat.completions.create(
             model="llama-3.1-8b-instant",
             messages=[
-                {"role": "system", "content": "You are a research curator who suggests the most interesting and current research topics."},
+                {"role": "system", "content": "You are a research curator. Always provide exactly 5 categories in the format: [emoji] [Word1] [Word2]. No extra formatting."},
                 {"role": "user", "content": onboarding_prompt}
             ],
-            max_tokens=200,
-            temperature=0.7
+            max_tokens=100,
+            temperature=0.8  # Higher temperature for more randomness
         )
         
         response = completion.choices[0].message.content
         if not response:
-            return []
+            return get_fallback_categories()
         
-        # Parse questions from response
-        questions = []
+        # Parse and clean categories from response
+        categories = []
         for line in response.strip().split('\n'):
             line = line.strip()
-            if line and ('?' in line or 'latest' in line.lower() or 'how' in line.lower() or 'what' in line.lower()):
-                questions.append(line)
+            # Remove any ** formatting and extra whitespace
+            line = line.replace('**', '').strip()
+            
+            # Check if line has an emoji (any emoji) and words after it
+            if line and len(line) > 0:
+                # Split by space and check if first character is likely an emoji
+                parts = line.split()
+                if len(parts) >= 3:  # Should have emoji + at least 2 words
+                    # Check if first part contains emoji (Unicode range for emojis)
+                    first_part = parts[0]
+                    if any(ord(char) > 127 for char in first_part):  # Contains non-ASCII (likely emoji)
+                        if len(parts) == 3:  # emoji + 2 words
+                            categories.append(line)
+                        elif len(parts) > 3:  # emoji + more than 2 words, truncate to 2
+                            categories.append(f"{parts[0]} {parts[1]} {parts[2]}")
         
-        return questions[:5]  # Limit to 5 questions
+        # If we got good categories, return them
+        if len(categories) >= 3:
+            return categories[:5]  # Limit to 5 categories
+        else:
+            return get_fallback_categories()
         
     except Exception as e:
-        print(f"Error generating onboarding terms: {e}")
-        return [
-            "What are the latest developments in quantum computing?",
-            "How is AI being applied in healthcare?",
-            "What breakthroughs are happening in renewable energy?",
-            "How is machine learning advancing climate research?"
-        ]
+        print(f"Error generating onboarding categories: {e}")
+        return get_fallback_categories()
+
+def get_fallback_categories() -> list:
+    """
+    Fallback research categories if LLM generation fails.
+    Each category follows the format: [emoji] [Word1] [Word2]
+    """
+    return [
+        "🤖 Artificial Intelligence",
+        "🧬 Gene Therapy", 
+        "⚛️ Quantum Computing",
+        "🌱 Climate Science",
+        "🚀 Space Technology"
+    ]
 
 def send_onboarding_research_suggestions(update):
     """
-    Send trending research topics as clickable buttons for new users.
+    Send trending research topics as text suggestions for new users.
     """
-    # Generate trending research questions
-    research_questions = generate_onboarding_research_terms()
+    # Generate trending research categories
+    research_categories = generate_onboarding_research_terms()
     
-    if research_questions:
-        # Generate button labels for the research questions
-        button_labels = generate_button_labels_from_hints(research_questions)
+    if research_categories:
+        # Send message with trending research topics as text
+        topics_text = "🔥 Trending Research Topics:\n\n"
+        for i, category in enumerate(research_categories, 1):
+            topics_text += f"{i}. {category}\n"
         
-        # Create inline keyboard with research topic buttons
-        keyboard = []
-        user_id = update.effective_user.id
+        topics_text += "\n💡 Use /llama or /deepseek to start chatting about any of these topics!"
         
-        for i, (question, button_text) in enumerate(zip(research_questions, button_labels)):
-            callback_data = f"onboard_{i}_{user_id}"
-            keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
-        
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        # Send message with trending research topics
+        send_telegram_message(update, topics_text)
+    else:
+        # Fallback if LLM generation fails
         send_telegram_message(
             update,
-            "🔥 **Trending Research Topics** - Click to explore:",
-            reply_markup=reply_markup
+            "Welcome! Use /help to see available commands or try /llama or /deepseek to start chatting."
         )
-        
-        # Store onboarding questions in user data for callback handling
-        udata = get_user_data(user_id)
-        udata['onboarding_questions'] = research_questions
 
-def handle_hint_callback(update, context):
+def handle_callback_query(update, context):
     """
-    Handle callback when user clicks on a hint button, including smart step suggestions.
-    Sends the question and triggers a bot response with enhanced tool context.
+    Handle callback queries from inline buttons (research toggle, etc.).
     """
     query = update.callback_query
-    query.answer()  # Acknowledge the callback
-    
-    # Parse callback data: hint_{index}_{user_id}, onboard_{index}_{user_id}, smart_step_{index}_{user_id}
     callback_data = query.data
     
-    # Handle separator buttons (do nothing)
-    if callback_data == "separator":
-        return
-    
-    if callback_data.startswith('arxiv_search_'):
-        # Handle arXiv Papers button click
-        user_id = int(callback_data.split('_')[2])
-        
-        # Send a prompt asking what to search for
-        query.message.reply_text("📄 What research topic would you like to search for on arXiv?\n\nJust type your topic and I'll find the latest papers for you!")
-        
-    elif callback_data.startswith('smart_step_'):
-        # Handle smart next step suggestions
-        parts = callback_data.split('_')
-        if len(parts) >= 3:
-            step_index = int(parts[2])
-            user_id = int(parts[3])
-            
-            # Get user's stored tool suggestions
-            udata = get_user_data(user_id)
-            tool_suggestions = udata.get('tool_suggestions', {})
-            
-            if 'immediate_next_steps' in tool_suggestions and step_index < len(tool_suggestions['immediate_next_steps']):
-                next_step = tool_suggestions['immediate_next_steps'][step_index]
-                
-                # Extract tool name and description
-                if ' - ' in next_step:
-                    tool_name, description = next_step.split(' - ', 1)
-                    
-                    # Create an intelligent question that will trigger the right tool
-                    tool_questions = {
-                        'extract_info': "Can you get detailed information about the most relevant paper from the results?",
-                        'search_papers': f"Search for more papers related to this topic",
-                        'get_topic_papers': "Show me papers that have been saved in this research area",
-                        'get_available_folders': "What other research topics are available to explore?",
-                        'get_research_prompt': "Give me structured research guidance for this topic"
-                    }
-                    
-                    smart_question = tool_questions.get(tool_name, description)
-                    
-                    # Enhance the question with tool context for better LLM tool selection
-                    enhanced_question = enhance_question_with_tool_context(smart_question, tool_name)
-                    
-                    # Send the enhanced question
-                    query.message.reply_text(f"🧠 Smart suggestion: {enhanced_question}")
-                    
-                    # Create enhanced context for processing
-                    fake_context = type('Context', (), {})() 
-                    fake_context.args = enhanced_question.split()
-                    
-                    # Create a new update object
-                    fake_update = type('Update', (), {})()  
-                    fake_update.effective_user = query.from_user
-                    fake_update.effective_chat = query.message.chat
-                    fake_update.message = query.message
-                    
-                    # Use last model or default to llama
-                    last_model = udata.get('last_model', 'llama')
-                    
-                    if last_model == 'deepseek':
-                        deepseek_command(fake_update, fake_context)
-                    else:
-                        llama_command(fake_update, fake_context)
-        
-    elif callback_data.startswith('hint_') or callback_data.startswith('onboard_'):
-        parts = callback_data.split('_')
-        if len(parts) >= 3:
-            hint_index = int(parts[1])
-            user_id = int(parts[2])
-            
-            # Get user's stored hints or onboarding questions
-            udata = get_user_data(user_id)
-            
-            if callback_data.startswith('onboard_'):
-                # Handle onboarding research topic selection
-                questions = udata.get('onboarding_questions', [])
-            else:
-                # Handle regular conversation hints
-                questions = udata.get('current_hints', [])
-            
-            if hint_index < len(questions):
-                question = questions[hint_index]
-                
-                # Remove emoji prefix from the question for cleaner display
-                clean_question = question.split(' ', 1)[1] if ' ' in question else question
-                
-                # Predict which tool this question will likely trigger
-                predicted_tool = predict_next_tool_from_question(clean_question)
-                
-                # Enhance the question with tool context for better LLM tool selection
-                enhanced_question = enhance_question_with_tool_context(clean_question, predicted_tool)
-                
-                # Send the enhanced question as if the user asked it
-                query.message.reply_text(f"💬 {enhanced_question}")
-                
-                # Create a fake context with the enhanced question as args
-                fake_context = type('Context', (), {})() 
-                fake_context.args = enhanced_question.split()
-                
-                # Create a new update object for the question
-                fake_update = type('Update', (), {})()  
-                fake_update.effective_user = query.from_user
-                fake_update.effective_chat = query.message.chat
-                fake_update.message = query.message
-                
-                # For onboarding, default to llama; for hints, use last model
-                if callback_data.startswith('onboard_'):
-                    last_model = 'llama'  # Default for new users
-                else:
-                    last_model = udata.get('last_model', 'llama')
-                
-                if last_model == 'deepseek':
-                    # Process as deepseek command
-                    deepseek_command(fake_update, fake_context)
-                else:
-                    # Process as llama command (default)
-                    llama_command(fake_update, fake_context)
+    # Handle essential research toggle functionality
+    if callback_data == "toggle_research":
+        toggle_research_callback(update, context)
+    else:
+        # For any other callbacks, provide help message
+        query.answer()
+        query.message.reply_text("Use /help to see available commands or try /llama or /deepseek to start chatting.")
 
 def get_deepseek_reply(messages: list, enable_tools: bool = True, update=None) -> str:
     """
@@ -1730,20 +1430,16 @@ def start(update, context):
         "/prompt <topic> - Generate comprehensive research prompt\n\n" +
         "🔧 Utility Commands:\n" +
         "/reset - Clear conversation history\n" +
-        "/help - Show detailed help and toggle auto-research\n\n" +
-        "🚀 Ready to explore? Try asking:\n" +
-        "• \"What are the latest breakthroughs in cancer research?\"\n" +
-        "• \"How is machine learning being used in drug discovery?\"\n" +
-        "• \"Show me research on climate change mitigation\"\n" +
-        "• \"What's happening in space exploration technology?\"\n" +
-        "• \"Find studies on mental health and social media\"\n" +
-        "• \"Explain advances in renewable energy storage\"\n" +
-        "• \"What's new in robotics and automation?\"\n\n" +
-        "👇 Choose your AI assistant below to get started!",
+        "/help - Show detailed help and toggle auto-research",
         reply_markup=reply_markup
     )
 
 def help_command(update, context):
+    user_id = update.effective_user.id
+    
+    # Create keyboard with chat options and research toggle
+    reply_markup = update_keyboard(user_id)
+    
     send_telegram_message(update,
         "🤖 Inquisita Spark Research Assistant Help\n\n" +
         "🧠 Smart Chat (Recommended):\n" +
@@ -1758,11 +1454,8 @@ def help_command(update, context):
         "/prompt <topic> - Generate comprehensive research prompt\n\n" +
         "🔧 Utility Commands:\n" +
         "/reset - Clear conversation history\n" +
-        "/help - Show this help message\n\n" +
-        "✨ Example Questions:\n" +
-        "• \"What's new in machine learning research?\"\n" +
-        "• \"Find papers about quantum computing\"\n" +
-        "• \"Explain recent developments in AI safety\""
+        "/help - Show this help message\n\n",
+        reply_markup=reply_markup
     )
 
 def toggle_research_callback(update, context):
@@ -1901,17 +1594,6 @@ def llama_command(update, context):
     q = ' '.join(context.args)
     print(f"LLAMA query from user {user_id}: {q}")
     
-    # Predict which tool this question might trigger for proactive guidance
-    predicted_tool = predict_next_tool_from_question(q)
-    
-    # Enhance the question with tool context if research is enabled
-    auto_research_enabled = udata.get('auto_research', True)
-    if auto_research_enabled and predicted_tool:
-        enhanced_q = enhance_question_with_tool_context(q, predicted_tool)
-        print(f"Enhanced query with tool context: {enhanced_q}")
-        # Use enhanced question for better tool selection
-        q = enhanced_q
-    
     # Add user message to history
     udata['llama_history'].append({"role": "user", "content": q})
     
@@ -1949,10 +1631,6 @@ def llama_command(update, context):
     
     # Send the main response
     send_telegram_message(update, reply)
-    
-    # Send LLM-powered follow-up hints as separate messages
-    if not reply.startswith("⚠️"):  # Only send hints for successful responses
-        send_interactive_hints(update, reply)
 
 def deepseek_command(update, context):
     user_id = update.effective_user.id
@@ -1982,17 +1660,6 @@ def deepseek_command(update, context):
         
     q = ' '.join(context.args)
     print(f"Deepseek query from user {user_id}: {q}")
-    
-    # Predict which tool this question might trigger for proactive guidance
-    predicted_tool = predict_next_tool_from_question(q)
-    
-    # Enhance the question with tool context if research is enabled
-    auto_research_enabled = udata.get('auto_research', True)
-    if auto_research_enabled and predicted_tool:
-        enhanced_q = enhance_question_with_tool_context(q, predicted_tool)
-        print(f"Enhanced query with tool context: {enhanced_q}")
-        # Use enhanced question for better tool selection
-        q = enhanced_q
     
     # Add user message to history
     udata['deepseek_history'].append({"role": "user", "content": q})
@@ -2196,8 +1863,8 @@ if telegram_dispatcher:
     telegram_dispatcher.add_handler(CommandHandler("llama", llama_command))
     telegram_dispatcher.add_handler(CommandHandler("deepseek", deepseek_command))
     telegram_dispatcher.add_handler(CommandHandler("reset", reset_command))
-    # Add callback handler for interactive hint buttons
-    telegram_dispatcher.add_handler(CallbackQueryHandler(handle_hint_callback))
+    # Add callback handler for essential inline buttons (research toggle, etc.)
+    telegram_dispatcher.add_handler(CallbackQueryHandler(handle_callback_query))
     # Add handler for regular text messages (must be added last)
     telegram_dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, message_handler))
 
