@@ -975,13 +975,13 @@ def generate_onboarding_research_terms():
     try:
         client = Groq()
         
-        # Random prompt variations for proper research field names - EXACTLY TWO WORDS ONLY
+        # Improved prompt to ensure exactly 5 unique topics
         prompt_styles = [
-            "Generate 4-5 real research field names using EXACTLY TWO WORDS each. Use ADJECTIVE + NOUN format like: 'Quantum Biology', 'Digital Archaeology', 'Urban Ecology'. Make them sound like actual academic disciplines!",
-            "Create 4-5 interdisciplinary research field names using EXACTLY TWO WORDS each. Format: ADJECTIVE + SCIENCE like 'Computational Linguistics', 'Behavioral Economics', 'Environmental Psychology'.",
-            "Suggest 4-5 emerging research areas using EXACTLY TWO WORDS each. Use patterns like 'Marine Biology', 'Space Medicine', 'Cognitive Neuroscience'. Sound academic and professional!",
-            "Generate 4-5 scientific field names using EXACTLY TWO WORDS each. Examples: 'Molecular Gastronomy', 'Forensic Anthropology', 'Synthetic Biology'. Make them real-sounding disciplines!",
-            "Create 4-5 academic research areas using EXACTLY TWO WORDS each. Use formats like 'Applied Mathematics', 'Social Robotics', 'Theoretical Physics'. Sound like university departments!"
+            "Generate EXACTLY 5 unique research field names using EXACTLY TWO WORDS each. Use ADJECTIVE + NOUN format like: 'Quantum Biology', 'Digital Archaeology', 'Urban Ecology', 'Cognitive Robotics', 'Marine Genomics'. Make them sound like actual academic disciplines and ensure all 5 are completely different!",
+            "Create EXACTLY 5 distinct interdisciplinary research field names using EXACTLY TWO WORDS each. Format: ADJECTIVE + SCIENCE like 'Computational Linguistics', 'Behavioral Economics', 'Environmental Psychology', 'Social Robotics', 'Cultural Neuroscience'. No duplicates!",
+            "Suggest EXACTLY 5 unique emerging research areas using EXACTLY TWO WORDS each. Use patterns like 'Marine Biology', 'Space Medicine', 'Cognitive Neuroscience', 'Synthetic Biology', 'Digital Archaeology'. Sound academic and ensure all are different!",
+            "Generate EXACTLY 5 different scientific field names using EXACTLY TWO WORDS each. Examples: 'Molecular Gastronomy', 'Forensic Anthropology', 'Theoretical Physics', 'Applied Mathematics', 'Biomimetic Engineering'. Make them real-sounding and unique!",
+            "Create EXACTLY 5 distinct academic research areas using EXACTLY TWO WORDS each. Use formats like 'Quantum Computing', 'Environmental Science', 'Comparative Literature', 'Experimental Philosophy', 'Planetary Geology'. Sound like university departments and ensure uniqueness!"
         ]
         
         # Random research domains to inspire variety
@@ -1005,10 +1005,20 @@ def generate_onboarding_research_terms():
 
 Consider diverse areas like: {selected_domains}
 
-Format as simple topic names, one per line.
-Examples: "Quantum Archaeology", "Urban Mycology", "Computational Linguistics"
-Make each topic name specific and intriguing.
-Avoid common topics like basic AI or climate change.
+IMPORTANT REQUIREMENTS:
+- Output EXACTLY 5 lines, one topic per line
+- Each topic must be EXACTLY 2 words (ADJECTIVE + NOUN)
+- All 5 topics must be completely different from each other
+- No duplicates or similar topics allowed
+- Make each topic specific and intriguing
+
+Format: One topic per line, no numbering, no bullets
+Example output:
+Quantum Archaeology
+Urban Mycology
+Computational Linguistics
+Marine Robotics
+Digital Anthropology
 
 Seed: {timestamp_seed}"""
         
@@ -1044,7 +1054,30 @@ Seed: {timestamp_seed}"""
                     topics.append(line)
                     seen_topics.add(normalized)
         
-        return topics[:5]  # Limit to 5 unique topics
+        # If we don't have exactly 5 unique topics, supplement with fallback topics
+        if len(topics) < 5:
+            print(f"DEBUG: LLM only generated {len(topics)} unique topics, supplementing with fallbacks")
+            
+            # Predefined unique fallback topics
+            fallback_topics = [
+                "Quantum Biology", "Digital Archaeology", "Urban Ecology", "Cognitive Robotics", "Marine Genomics",
+                "Space Medicine", "Computational Linguistics", "Behavioral Economics", "Environmental Psychology", "Social Robotics",
+                "Synthetic Biology", "Molecular Gastronomy", "Forensic Anthropology", "Theoretical Physics", "Applied Mathematics",
+                "Cultural Neuroscience", "Biomimetic Engineering", "Planetary Geology", "Comparative Literature", "Experimental Philosophy"
+            ]
+            
+            # Add fallback topics that aren't already in our list
+            for fallback in fallback_topics:
+                if len(topics) >= 5:
+                    break
+                
+                fallback_normalized = ' '.join(fallback.lower().split())
+                if fallback_normalized not in seen_topics:
+                    topics.append(fallback)
+                    seen_topics.add(fallback_normalized)
+        
+        # Ensure we return exactly 5 topics
+        return topics[:5]
         
     except Exception as e:
         print(f"Error generating onboarding terms: {e}")
@@ -1165,26 +1198,22 @@ def send_onboarding_research_suggestions(update):
         # Use the original topic name with a default emoji
         button_labels.append(f"🔬 {research_questions[missing_index]}")
     
-    # Create buttons with topic-embedded callback data to eliminate index mapping issues
+    # Create buttons with simple index-based callbacks
     topic_button_mapping = {}
     
     for i, question in enumerate(research_questions):
         # Use the corresponding button label, or fallback to the question itself
         button_text = button_labels[i] if i < len(button_labels) else f"🔬 {question}"
         
-        # Embed the actual topic in callback data instead of relying on index
-        # Use base64 encoding to handle special characters and spaces safely
-        import base64
-        topic_encoded = base64.b64encode(question.encode('utf-8')).decode('utf-8')
-        callback_data = f"topic_{topic_encoded}_{user_id}"
+        # Simple index-based callback data
+        callback_data = f"onboard_{i}_{user_id}"
         
         keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
         
         # Store the exact mapping for debugging
         topic_button_mapping[i] = {
             'topic': question,
-            'button_text': button_text,
-            'encoded_topic': topic_encoded
+            'button_text': button_text
         }
     
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -1221,51 +1250,32 @@ def handle_hint_callback(update, context):
         return
     
 
-    elif callback_data.startswith('hint_') or callback_data.startswith('onboard_') or callback_data.startswith('topic_'):
+    elif callback_data.startswith('hint_') or callback_data.startswith('onboard_'):
         # Handle topic button clicks (both onboarding and regular hints)
-        
-        if callback_data.startswith('topic_'):
-            # New topic-embedded callback system
-            parts = callback_data.split('_')
-            if len(parts) >= 3:
-                topic_encoded = parts[1]
-                user_id = int(parts[2])
-                
-                # Decode the topic from base64
-                import base64
-                try:
-                    topic = base64.b64decode(topic_encoded.encode('utf-8')).decode('utf-8')
-                    print(f"DEBUG: Topic-embedded callback - User: {user_id}, Topic: '{topic}'")
-                except Exception as e:
-                    print(f"DEBUG: Error decoding topic: {e}")
-                    query.message.reply_text("❌ Error processing topic. Please try again.")
-                    return
-        else:
-            # Legacy index-based callback system (for backward compatibility)
-            parts = callback_data.split('_')
-            if len(parts) >= 3:
-                hint_index = int(parts[1])
-                user_id = int(parts[2])
-                
-                udata = get_user_data(user_id)
-                
-                if callback_data.startswith('onboard_'):
-                    topics = udata.get('onboarding_questions', [])
-                    mapping = udata.get('onboarding_mapping', {})
-                    print(f"DEBUG: Legacy onboarding callback - Index: {hint_index}, Available topics: {len(topics)}")
-                    if hint_index in mapping:
-                        print(f"DEBUG: Button mapping - Button: '{mapping[hint_index]['button_text']}' -> Topic: '{mapping[hint_index]['topic']}'")
-                else:
-                    topics = udata.get('current_hints', [])
-                    print(f"DEBUG: Legacy hint callback - Index: {hint_index}, Available topics: {len(topics)}")
-                
-                if hint_index < len(topics):
-                    # Topic is now a simple name (e.g., "Quantum Computing")
-                    topic = topics[hint_index].strip()
-                    print(f"DEBUG: Retrieved topic at index {hint_index}: '{topic}'")  
-                else:
-                    query.message.reply_text("❌ Topic not found. Please try again.")
-                    return
+        parts = callback_data.split('_')
+        if len(parts) >= 3:
+            hint_index = int(parts[1])
+            user_id = int(parts[2])
+            
+            udata = get_user_data(user_id)
+            
+            if callback_data.startswith('onboard_'):
+                topics = udata.get('onboarding_questions', [])
+                mapping = udata.get('onboarding_mapping', {})
+                print(f"DEBUG: Onboarding callback - Index: {hint_index}, Available topics: {len(topics)}")
+                if hint_index in mapping:
+                    print(f"DEBUG: Button mapping - Button: '{mapping[hint_index]['button_text']}' -> Topic: '{mapping[hint_index]['topic']}'")
+            else:
+                topics = udata.get('current_hints', [])
+                print(f"DEBUG: Regular hint callback - Index: {hint_index}, Available topics: {len(topics)}")
+            
+            if hint_index < len(topics):
+                # Topic is now a simple name (e.g., "Quantum Computing")
+                topic = topics[hint_index].strip()
+                print(f"DEBUG: Retrieved topic at index {hint_index}: '{topic}'")  
+            else:
+                query.message.reply_text("❌ Topic not found. Please try again.")
+                return
         
         # Check if auto-research is enabled for this user (applies to both systems)
         udata = get_user_data(user_id)
