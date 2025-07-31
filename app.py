@@ -962,96 +962,8 @@ def format_deepseek_thinking(text: str) -> str:
 
 
 
-def send_interactive_hints(update, response: str, tools_used: list = None):
-    """
-    Send three useful buttons for simple research navigation.
-    """
-    user_id = update.effective_user.id
-    
-    # Create three useful buttons
-    keyboard = [
-        [InlineKeyboardButton("📁 Browse More Topics", callback_data=f"simple_browse_{user_id}")],
-        [InlineKeyboardButton("📚 Saved Papers", callback_data=f"simple_saved_{user_id}")],
-        [InlineKeyboardButton("🔍 Search Different Topic", callback_data=f"simple_search_{user_id}")]
-    ]
-    
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    # Simple message
-    message_text = "💡 What would you like to do next?"
-    
-    # Send message with simple navigation buttons
-    send_telegram_message(
-        update, 
-        message_text, 
-        reply_markup=reply_markup
-    )
 
-def generate_button_labels_from_hints(hints: list) -> list:
-    """
-    Generate button labels from hint questions using LLM.
-    """
-    if not hints:
-        return []
-    
-    try:
-        client = Groq()
-        
-        prompt = """Generate concise button labels (max 20 chars each) for these follow-up questions:
 
-{}
-
-Format as a list, one label per line. Make each label actionable and specific to the question content. Include relevant emojis."""
-        
-        completion = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=[
-                {"role": "system", "content": "You are a UX expert that creates concise, actionable button labels for research questions."},
-                {"role": "user", "content": prompt.format('\n'.join(hints))}
-            ],
-            max_tokens=150,
-            temperature=0.7
-        )
-        
-        response = completion.choices[0].message.content
-        if not response:
-            return generate_fallback_button_labels(hints)
-        
-        # Parse labels from response
-        labels = []
-        for line in response.strip().split('\n'):
-            line = line.strip()
-            if line:
-                # Remove any numbering or bullets
-                line = line.lstrip('1234567890.- ')
-                labels.append(line[:25])  # Limit length
-        
-        return labels[:len(hints)]  # Match number of hints
-        
-    except Exception as e:
-        print(f"Error generating button labels: {e}")
-        return generate_fallback_button_labels(hints)
-
-def generate_fallback_button_labels(hints: list) -> list:
-    """
-    Fallback button labels when LLM generation fails.
-    """
-    fallback_labels = [
-        "🔍 Explore More",
-        "📚 Deep Dive", 
-        "🔬 Research",
-        "💡 Learn More",
-        "🚀 Next Steps"
-    ]
-    
-    labels = []
-    for i, hint in enumerate(hints):
-        if i < len(fallback_labels):
-            labels.append(fallback_labels[i])
-        else:
-            labels.append(f"🔍 Option {i+1}")
-    
-    return labels
 
 def generate_onboarding_research_terms():
     """
@@ -1261,55 +1173,7 @@ def handle_hint_callback(update, context):
     if callback_data == "separator":
         return
     
-    if callback_data.startswith('simple_'):
-        # Handle simple navigation buttons
-        parts = callback_data.split('_')
-        if len(parts) >= 3:
-            action = parts[1]
-            user_id = int(parts[2])
-            
-            if action == 'browse':
-                # Browse More Topics
-                try:
-                    folders = get_available_folders()
-                    if folders:
-                        response = "📁 **Available Research Topics:**\n\n"
-                        for i, folder in enumerate(folders[:10], 1):
-                            topic_display = folder.replace('_', ' ').title()
-                            response += f"{i}. {topic_display}\n"
-                        response += "\n💡 Click any research topic button to explore papers in that area."
-                    else:
-                        response = "❌ No research topics found. Try searching for papers first."
-                    query.message.reply_text(response, parse_mode='Markdown')
-                except Exception as e:
-                    query.message.reply_text(f"❌ Error loading topics: {str(e)}")
-                    
-            elif action == 'saved':
-                # Saved Papers
-                try:
-                    folders = get_available_folders()
-                    if folders:
-                        response = "📚 **Saved Papers by Topic:**\n\n"
-                        for i, folder in enumerate(folders[:10], 1):
-                            topic_display = folder.replace('_', ' ').title()
-                            try:
-                                papers = get_topic_papers(folder)
-                                paper_count = len(papers) if papers else 0
-                                response += f"{i}. {topic_display} ({paper_count} papers)\n"
-                            except:
-                                response += f"{i}. {topic_display}\n"
-                        response += "\n💡 Use `/papers <topic>` to see papers in any topic."
-                    else:
-                        response = "❌ No saved papers found. Search for papers first to build your collection."
-                    query.message.reply_text(response, parse_mode='Markdown')
-                except Exception as e:
-                    query.message.reply_text(f"❌ Error loading saved papers: {str(e)}")
-                    
-            elif action == 'search':
-                # Search Different Topic
-                prompt = "🔍 **Search for Papers**\n\nType `/search <topic>` to find papers on any research topic.\n\nExample: `/search machine learning`"
-                query.message.reply_text(prompt, parse_mode='Markdown')
-        
+
     elif callback_data.startswith('hint_') or callback_data.startswith('onboard_'):
         # Handle topic button clicks (both onboarding and regular hints)
         parts = callback_data.split('_')
