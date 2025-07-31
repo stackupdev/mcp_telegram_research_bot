@@ -1099,118 +1099,73 @@ Format as a simple list, one question per line, without numbering or bullets. Ma
 
 def send_interactive_hints(update, response: str, tools_used: list = None):
     """
-    Generate and send intelligent follow-up hints as interactive buttons.
-    Provides direct tool access and LLM-generated contextual questions.
+    Send 3 direct MCP tool-specific buttons for research follow-up.
+    Provides immediate access to core research functionality.
     """
-    # Get LLM-generated hints
-    hints = generate_llm_follow_up_hints("", response, tools_used)
+    user_id = update.effective_user.id
     
-    if hints:
-        # Generate LLM-powered button labels from the hint questions
-        button_labels = generate_button_labels_from_hints(hints)
-        
-        # Create inline keyboard with LLM-generated button text
-        keyboard = []
-        for i, (hint, button_text) in enumerate(zip(hints, button_labels)):
-            callback_data = f"hint_{i}_{update.effective_user.id}"
-            keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
-        
-        # Add direct tool access buttons
-        keyboard.append([InlineKeyboardButton("——— Direct Research Tools ———", callback_data="separator")])
-        
-        # Add direct tool action buttons
-        user_id = update.effective_user.id
-        tool_buttons = [
-            [InlineKeyboardButton("🔍 Search Papers", callback_data=f"direct_search_{user_id}")],
-            [InlineKeyboardButton("📁 Browse Topics", callback_data=f"direct_topics_{user_id}")],
-            [InlineKeyboardButton("📋 Paper Info", callback_data=f"direct_info_{user_id}")],
-            [InlineKeyboardButton("🗺️ Research Guide", callback_data=f"direct_guide_{user_id}")]
-        ]
-        keyboard.extend(tool_buttons)
-        
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        # Create message based on tools used
-        if tools_used:
-            tools_text = ", ".join(tools_used)
-            message_text = f"🧠 Based on the {tools_text} results, here are follow-up options:"
-        else:
-            message_text = "💡 What to explore next? Click a question below:"
-        
-        # Send message with interactive buttons
-        send_telegram_message(
-            update, 
-            message_text, 
-            reply_markup=reply_markup
-        )
-        
-        # Store hints in user data for callback handling
-        user_id = update.effective_user.id
-        udata = get_user_data(user_id)
-        udata['current_hints'] = hints
+    # Create 3 MCP tool-specific buttons
+    keyboard = [
+        [InlineKeyboardButton("🔍 Search Papers", callback_data=f"mcp_search_{user_id}")],
+        [InlineKeyboardButton("📁 Browse Topics", callback_data=f"mcp_topics_{user_id}")],
+        [InlineKeyboardButton("🗺️ Research Guide", callback_data=f"mcp_guide_{user_id}")]
+    ]
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    # Create message based on tools used
+    if tools_used:
+        tools_text = ", ".join(tools_used)
+        message_text = f"🧠 Based on the {tools_text} results, continue your research:"
+    else:
+        message_text = "💡 Continue exploring with MCP research tools:"
+    
+    # Send message with MCP tool buttons
+    send_telegram_message(
+        update, 
+        message_text, 
+        reply_markup=reply_markup
+    )
 
 def generate_button_labels_from_hints(hints: list) -> list:
     """
-    Generate concise, summarized questions from hint questions using LLM.
+    Generate simple, direct button labels from hint questions.
     """
     if not hints:
         return []
     
-    try:
-        client = Groq()
+    labels = []
+    for i, hint in enumerate(hints):
+        # Extract key terms and create simple labels
+        hint_lower = hint.lower()
         
-        # Create prompt for generating button labels
-        hints_text = "\n".join([f"{i+1}. {hint}" for i, hint in enumerate(hints)])
-        
-        label_prompt = f"""Convert these research questions into concise, summarized questions that fit on buttons (max 6-8 words each).
-
-Original Questions:
-{hints_text}
-
-For each question, create a shorter, clearer version that maintains the key meaning. Keep emojis. Format as:
-1. [emoji] [concise question]
-2. [emoji] [concise question]
-
-Examples:
-- "📄 What are the latest developments in quantum computing research?" → "📄 Latest quantum computing developments?"
-- "⚖️ How do different machine learning approaches compare in accuracy?" → "⚖️ Compare ML approach accuracy?"
-- "🔧 What are the practical applications of this technology?" → "🔧 Practical applications?"
-
-Make questions specific, actionable, and button-friendly (6-8 words max)."""
-        
-        completion = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=[
-                {"role": "system", "content": "You are an expert at creating concise, meaningful button labels for research topics. Always include relevant emojis."},
-                {"role": "user", "content": label_prompt}
-            ],
-            max_tokens=150,
-            temperature=0.3
-        )
-        
-        response = completion.choices[0].message.content
-        if not response:
-            return [f"💡 Option {i+1}" for i in range(len(hints))]
-        
-        # Parse the response into button labels
-        labels = []
-        for line in response.strip().split('\n'):
-            line = line.strip()
-            # Extract label after number and period
-            if '. ' in line:
-                label = line.split('. ', 1)[1]
-                labels.append(label)
-        
-        # Ensure we have the right number of labels
-        while len(labels) < len(hints):
-            labels.append(f"💡 Option {len(labels)+1}")
-        
-        return labels[:len(hints)]
-        
-    except Exception as e:
-        print(f"Error generating button labels: {e}")
-        # Fallback to generic labels
-        return [f"💡 Option {i+1}" for i in range(len(hints))]
+        # Simple keyword-based labeling
+        if 'latest' in hint_lower or 'recent' in hint_lower or 'new' in hint_lower:
+            labels.append("🔥 Latest Research")
+        elif 'compare' in hint_lower or 'vs' in hint_lower or 'difference' in hint_lower:
+            labels.append("⚖️ Compare Options")
+        elif 'application' in hint_lower or 'use' in hint_lower or 'practical' in hint_lower:
+            labels.append("🔧 Applications")
+        elif 'method' in hint_lower or 'approach' in hint_lower or 'technique' in hint_lower:
+            labels.append("📋 Methods")
+        elif 'future' in hint_lower or 'trend' in hint_lower or 'direction' in hint_lower:
+            labels.append("🚀 Future Trends")
+        elif 'challenge' in hint_lower or 'problem' in hint_lower or 'issue' in hint_lower:
+            labels.append("⚠️ Challenges")
+        elif 'benefit' in hint_lower or 'advantage' in hint_lower or 'impact' in hint_lower:
+            labels.append("✅ Benefits")
+        elif 'example' in hint_lower or 'case' in hint_lower:
+            labels.append("📝 Examples")
+        elif 'how' in hint_lower and ('work' in hint_lower or 'function' in hint_lower):
+            labels.append("⚙️ How It Works")
+        elif 'what' in hint_lower and ('is' in hint_lower or 'are' in hint_lower):
+            labels.append("❓ What Is It")
+        else:
+            # Generic fallback based on position
+            fallbacks = ["💡 More Info", "🔍 Deep Dive", "📚 Learn More", "🎯 Details", "🔬 Research"]
+            labels.append(fallbacks[i % len(fallbacks)])
+    
+    return labels
 
 def generate_onboarding_research_terms() -> list:
     """
@@ -1314,22 +1269,21 @@ def handle_hint_callback(update, context):
     if callback_data == "separator":
         return
     
-    if callback_data.startswith('direct_'):
-        # Handle direct tool action buttons
+    if callback_data.startswith('mcp_'):
+        # Handle MCP tool-specific buttons
         parts = callback_data.split('_')
         if len(parts) >= 3:
             action = parts[1]
             user_id = int(parts[2])
             
-            # Create appropriate questions for each direct tool action
-            tool_questions = {
-                'search': "What research topic would you like to search for?",
-                'topics': "What research topics are available?",
-                'info': "What paper would you like detailed information about? (provide paper ID or title)",
-                'guide': "What topic would you like research guidance for?"
+            # Create MCP tool-specific questions that will trigger the right tools
+            mcp_questions = {
+                'search': "Search for research papers on quantum computing",
+                'topics': "What research topics are available to explore?",
+                'guide': "Give me a comprehensive research guide for artificial intelligence"
             }
             
-            question = tool_questions.get(action, "What would you like to research?")
+            question = mcp_questions.get(action, "What would you like to research?")
             
             # Send the question
             query.message.reply_text(f"🔧 {question}")
