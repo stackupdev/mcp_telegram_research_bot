@@ -1063,13 +1063,13 @@ def generate_onboarding_research_terms():
     try:
         client = Groq()
         
-        # Random prompt variations for more variety - EXACTLY TWO WORDS ONLY
+        # Random prompt variations for proper research field names - EXACTLY TWO WORDS ONLY
         prompt_styles = [
-            "Generate 4-5 research topic names using EXACTLY TWO WORDS each. Examples: 'Quantum Biology', 'Digital Archaeology', 'Urban Mycology'. Be creative and unexpected!",
-            "Suggest 4-5 fascinating research areas using EXACTLY TWO WORDS each. Think interdisciplinary fields like 'Neuro Economics', 'Space Psychology'.",
-            "Create 4-5 cutting-edge topic names with EXACTLY TWO WORDS each. Examples: 'Crypto Botany', 'Sonic Geology', 'Virtual Anthropology'.",
-            "Generate 4-5 research topics using EXACTLY TWO WORDS each from different domains. Examples: 'Marine Robotics', 'Behavioral Finance', 'Computational Linguistics'.",
-            "Suggest 4-5 unconventional research areas using EXACTLY TWO WORDS each. Examples: 'Emotional AI', 'Quantum Sociology', 'Biomimetic Architecture'."
+            "Generate 4-5 real research field names using EXACTLY TWO WORDS each. Use ADJECTIVE + NOUN format like: 'Quantum Biology', 'Digital Archaeology', 'Urban Ecology'. Make them sound like actual academic disciplines!",
+            "Create 4-5 interdisciplinary research field names using EXACTLY TWO WORDS each. Format: ADJECTIVE + SCIENCE like 'Computational Linguistics', 'Behavioral Economics', 'Environmental Psychology'.",
+            "Suggest 4-5 emerging research areas using EXACTLY TWO WORDS each. Use patterns like 'Marine Biology', 'Space Medicine', 'Cognitive Neuroscience'. Sound academic and professional!",
+            "Generate 4-5 scientific field names using EXACTLY TWO WORDS each. Examples: 'Molecular Gastronomy', 'Forensic Anthropology', 'Synthetic Biology'. Make them real-sounding disciplines!",
+            "Create 4-5 academic research areas using EXACTLY TWO WORDS each. Use formats like 'Applied Mathematics', 'Social Robotics', 'Theoretical Physics'. Sound like university departments!"
         ]
         
         # Random research domains to inspire variety
@@ -1127,14 +1127,14 @@ Seed: {timestamp_seed}"""
         
     except Exception as e:
         print(f"Error generating onboarding terms: {e}")
-        # Random fallback topic names instead of static ones
+        # Random fallback topic names - proper academic field names
         import random
         fallback_pools = [
-            ["Quantum Computing", "AI Healthcare", "Renewable Energy", "Climate Machine Learning"],
-            ["Marine Biology", "Nanotechnology Materials", "Space Archaeology", "Urban Psychology"],
-            ["Cryptography Privacy", "Ancient Language AI", "Black Hole Physics", "Biotechnology Food"],
-            ["Sleep Research", "VR Therapy", "Sustainable Architecture", "Social Network Psychology"],
-            ["Fossil Dating", "Music AI Composition", "Earthquake Prediction", "Microbiome Mental Health"]
+            ["Quantum Biology", "Digital Archaeology", "Urban Ecology", "Cognitive Robotics"],
+            ["Marine Genomics", "Space Medicine", "Computational Linguistics", "Behavioral Economics"],
+            ["Synthetic Biology", "Environmental Psychology", "Molecular Gastronomy", "Forensic Anthropology"],
+            ["Social Robotics", "Theoretical Physics", "Applied Mathematics", "Cultural Neuroscience"],
+            ["Biomimetic Engineering", "Planetary Geology", "Comparative Literature", "Experimental Philosophy"]
         ]
         return random.choice(fallback_pools)
 
