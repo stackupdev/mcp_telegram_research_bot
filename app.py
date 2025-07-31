@@ -1221,7 +1221,7 @@ def send_onboarding_research_suggestions(update):
     # Send message with trending research topics
     send_telegram_message(
         update,
-        escape_markdown("🔥 **Trending Research Topics - Click to explore:**"),
+        "🔥 Trending Research Topics - Click to explore:",
         reply_markup=reply_markup
     )
     
@@ -1340,11 +1340,9 @@ def handle_hint_callback(update, context):
                             response += f"Authors: {authors} ({published})\n"
                             if pdf_url:
                                 response += f"PDF: {pdf_url}\n"
-                            summary_lines = summary.strip().split("\n")
+                            summary_clean = " ".join(summary.strip().split())
                             response += "Summary:\n"
-                            for line in summary_lines:
-                                response += f"  {line.strip()}\n"
-                            response += "\n\n"
+                            response += f"  {summary_clean}\n\n"
                         else:
                             response += f"{i}. Paper ID: `{paper_id}`\n\n"
                     except Exception:
@@ -1955,14 +1953,6 @@ def prompt_command(update, context):
         print(f"Error in prompt command: {e}")
         send_telegram_message(update, "❌ Sorry, there was an error generating the research prompt. Please try again.")
 
-import re
-
-def escape_markdown(text):
-    """Escape Telegram Markdown special characters."""
-    if not isinstance(text, str):
-        return text
-    # Escape all Telegram Markdown special characters
-    return re.sub(r'([_\*\[\]()~`>#+\-=|{}.!])', r'\\\1', text)
 
 def reset_command(update, context):
     user_id = update.effective_user.id
@@ -1977,10 +1967,10 @@ def reset_command(update, context):
     
     # Update keyboard and send confirmation
     reply_markup = update_keyboard(user_id)
-    status = escape_markdown(get_conversation_status(user_id))
+    status = get_conversation_status(user_id)
     send_telegram_message(
         update, 
-        f"✅ **Chat History Reset**\n\n{status}\n\n"
+        f"✅ Chat History Reset\n\n{status}\n\n"
         f"Your conversation history with both LLama and Deepseek has been cleared. "
         f"Choose an AI assistant below to start a fresh conversation!",
         reply_markup=reply_markup
