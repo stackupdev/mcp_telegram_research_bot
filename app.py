@@ -999,69 +999,6 @@ def send_interactive_hints(update, response: str, tools_used: list = None):
         reply_markup=reply_markup
     )
 
-def generate_button_labels_from_hints(hints: list) -> list:
-    """
-    Generate concise, summarized questions from hint questions using LLM.
-    """
-    if not hints:
-        return []
-    
-    try:
-        client = Groq()
-        
-        # Create prompt for generating button labels
-        hints_text = "\n".join([f"{i+1}. {hint}" for i, hint in enumerate(hints)])
-        
-        label_prompt = f"""Convert these research questions into concise, summarized questions that fit on buttons (max 6-8 words each).
-
-Original Questions:
-{hints_text}
-
-For each question, create a shorter, clearer version that maintains the key meaning. Keep emojis. Format as:
-1. [emoji] [concise question]
-2. [emoji] [concise question]
-
-Examples:
-- "📄 What are the latest developments in quantum computing research?" → "📄 Latest quantum computing developments?"
-- "⚖️ How do different machine learning approaches compare in accuracy?" → "⚖️ Compare ML approach accuracy?"
-- "🔧 What are the practical applications of this technology?" → "🔧 Practical applications?"
-
-Make questions specific, actionable, and button-friendly (6-8 words max)."""
-        
-        completion = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=[
-                {"role": "system", "content": "You are an expert at creating concise, meaningful button labels for research topics. Always include relevant emojis."},
-                {"role": "user", "content": label_prompt}
-            ],
-            max_tokens=150,
-            temperature=0.3
-        )
-        
-        response = completion.choices[0].message.content
-        if not response:
-            return [f"💡 Option {i+1}" for i in range(len(hints))]
-        
-        # Parse the response into button labels
-        labels = []
-        for line in response.strip().split('\n'):
-            line = line.strip()
-            # Extract label after number and period
-            if '. ' in line:
-                label = line.split('. ', 1)[1]
-                labels.append(label)
-        
-        # Ensure we have the right number of labels
-        while len(labels) < len(hints):
-            labels.append(f"💡 Option {len(labels)+1}")
-        
-        return labels[:len(hints)]
-        
-    except Exception as e:
-        print(f"Error generating button labels: {e}")
-        # Fallback to generic labels
-        return [f"💡 Option {i+1}" for i in range(len(hints))]
-
 def generate_onboarding_research_terms() -> list:
     """
     Generate 5 random research categories for new users to explore.
