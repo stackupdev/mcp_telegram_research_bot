@@ -1192,15 +1192,38 @@ def handle_hint_callback(update, context):
                 # Topic is now a simple name (e.g., "Quantum Computing")
                 topic = topics[hint_index].strip()
                 
-                # Execute direct search using the topic name
+                # Execute direct search using the topic name with progressive feedback
                 try:
+                    # Create a fake update object for progressive feedback
+                    class FakeUser:
+                        def __init__(self, user_id):
+                            self.id = user_id
+                    
+                    class FakeUpdate:
+                        def __init__(self, user_id):
+                            self.effective_user = FakeUser(user_id)
+                            self.effective_chat = query.message.chat
+                    
+                    fake_update = FakeUpdate(user_id)
+                    
+                    # Send initial search status
+                    send_progressive_research_update(fake_update, "search_papers", "starting", f"Searching ArXiv for papers on {topic}")
+                    
                     paper_ids = search_papers(topic, 10)
                     
                     if paper_ids:
+                        # Update progress
+                        send_progressive_research_update(fake_update, "search_papers", "completed", f"Found {len(paper_ids)} papers")
+                        send_progressive_research_update(fake_update, "extract_info", "starting", "Extracting paper details")
+                        
                         response = f"📚 **Recent papers on {topic}:**\n\n"
                         
                         for i, paper_id in enumerate(paper_ids[:10], 1):
                             try:
+                                # Show progress for paper extraction
+                                if i <= 3:  # Only show progress for first few papers to avoid spam
+                                    send_progressive_research_update(fake_update, "extract_info", "processing", f"Processing paper {i}/{len(paper_ids[:10])}")
+                                
                                 paper_info = extract_info(paper_id)
                                 if isinstance(paper_info, dict) and 'error' not in paper_info:
                                     title = paper_info.get('title', 'Unknown Title')[:80] + ('...' if len(paper_info.get('title', '')) > 80 else '')
@@ -1220,7 +1243,11 @@ def handle_hint_callback(update, context):
                                     response += f"{i}. Paper ID: `{paper_id}`\n\n"
                             except Exception:
                                 response += f"{i}. Paper ID: `{paper_id}`\n\n"
+                        
+                        # Final completion message
+                        finalize_research_feedback(fake_update, 2, 2)
                     else:
+                        send_progressive_research_update(fake_update, "search_papers", "completed", "No papers found")
                         response = f"❌ No papers found for '{topic}'. Try a different research area."
                     
                     # Use send_telegram_message to properly handle long messages and disable link previews
