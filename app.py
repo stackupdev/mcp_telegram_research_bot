@@ -4,7 +4,7 @@ import asyncio
 from typing import List
 from flask import Flask, render_template, request, jsonify
 from groq import Groq
-from telegram import Update, Bot, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, Bot, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Dispatcher, CommandHandler, MessageHandler, CallbackQueryHandler, Filters
 from mcp.client.sse import sse_client
 from mcp.client.session import ClientSession
@@ -960,24 +960,10 @@ def format_deepseek_thinking(text: str) -> str:
 
 def send_interactive_hints(update, response: str, tools_used: list = None):
     """
-    Send essential research action buttons - redundant functions removed.
+    Simplified function - no longer sends interactive buttons.
     """
-    user_id = update.effective_user.id
-    
-    # Essential action buttons only - search and paper info now handled automatically
-    keyboard = [
-        [InlineKeyboardButton("📁 Browse Topics", callback_data=f"direct_topics_{user_id}")],
-        [InlineKeyboardButton("🎯 Research Guide", callback_data=f"direct_guide_{user_id}")]
-    ]
-    
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    # Send action buttons
-    send_telegram_message(
-        update, 
-        "🔧 Quick Actions:", 
-        reply_markup=reply_markup
-    )
+    # Interactive hints removed for simplicity
+    pass
 
 def generate_onboarding_research_terms() -> list:
     """
@@ -1060,98 +1046,39 @@ def get_fallback_categories() -> list:
 
 def send_onboarding_research_suggestions(update):
     """
-    Send trending research topics as clickable buttons for new users.
+    Send trending research topics as text suggestions for new users.
     """
     # Generate trending research categories
     research_categories = generate_onboarding_research_terms()
     
     if research_categories:
-        # Create inline keyboard with research topic buttons
-        keyboard = []
-        user_id = update.effective_user.id
+        # Send message with trending research topics as text
+        topics_text = "🔥 Trending Research Topics:\n\n"
+        for i, category in enumerate(research_categories, 1):
+            topics_text += f"{i}. {category}\n"
         
-        for i, category in enumerate(research_categories):
-            callback_data = f"onboard_{i}_{user_id}"
-            # Use the category name directly as the button text
-            keyboard.append([InlineKeyboardButton(category, callback_data=callback_data)])
+        topics_text += "\n💡 Use /llama or /deepseek to start chatting about any of these topics!"
         
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        # Send message with trending research topics
+        send_telegram_message(update, topics_text)
+    else:
+        # Fallback if LLM generation fails
         send_telegram_message(
             update,
-            "🔥 Trending Research Topics - Click to explore:",
-            reply_markup=reply_markup
+            "Welcome! Use /help to see available commands or try /llama or /deepseek to start chatting."
         )
-        
-        # Store onboarding categories in user data for callback handling
-        udata = get_user_data(user_id)
-        udata['onboarding_questions'] = research_categories
 
 def handle_hint_callback(update, context):
     """
-    Handle simplified callback routing for research actions.
+    Simplified callback handler - only handles essential functionality.
     """
     query = update.callback_query
     query.answer()  # Acknowledge the callback
     
     callback_data = query.data
-    user_id = update.effective_user.id
     
-    # Essential action routing - redundant handlers removed
-    if callback_data.startswith('direct_topics_'):
-        # Execute topics command directly
-        topics_command(update, context)
-        
-    elif callback_data.startswith('direct_guide_'):
-        query.message.reply_text("🎯 What research topic would you like a structured guide for?")
-        
-    elif callback_data.startswith('onboard_'):
-        # Handle onboarding category selection with simplified routing
-        try:
-            parts = callback_data.split('_')
-            if len(parts) >= 2:
-                index = int(parts[1])
-                udata = get_user_data(user_id)
-                
-                if 'onboarding_questions' in udata and index < len(udata['onboarding_questions']):
-                    selected_category = udata['onboarding_questions'][index]
-                    
-                    if is_in_conversation_mode(user_id):
-                        mode = udata.get('conversation_mode', 'none')
-                        
-                        # Simplified routing - just send the category as a message
-                        if mode in ['llama', 'deepseek']:
-                            # Create simplified fake objects for routing
-                            fake_update = type('obj', (object,), {
-                                'effective_user': update.effective_user,
-                                'message': type('obj', (object,), {
-                                    'text': selected_category,
-                                    'reply_text': query.message.reply_text
-                                })()
-                            })()
-                            
-                            fake_context = type('obj', (object,), {
-                                'args': selected_category.split(),
-                                'bot': getattr(context, 'bot', None)
-                            })()
-                            
-                            if mode == 'llama':
-                                llama_command(fake_update, fake_context)
-                            else:
-                                deepseek_command(fake_update, fake_context)
-                        else:
-                            query.message.reply_text("Please select an AI model first using /llama or /deepseek")
-                    else:
-                        query.message.reply_text("Please select an AI model first using /llama or /deepseek")
-                else:
-                    query.message.reply_text("Sorry, that category is no longer available. Please try again.")
-            else:
-                query.message.reply_text("Invalid selection. Please try again.")
-        except Exception as e:
-            print(f"Error handling onboarding callback: {e}")
-            query.message.reply_text("Sorry, there was an error processing your selection. Please try again.")
-        query.message.reply_text("💬 What would you like to research or explore next?")
+    # Only handle essential callbacks - non-essential inline buttons removed
+    # This function is kept minimal for future essential button functionality
+    query.message.reply_text("Use /help to see available commands or try /llama or /deepseek to start chatting.")
 
 def get_deepseek_reply(messages: list, enable_tools: bool = True, update=None) -> str:
     """
