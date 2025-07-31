@@ -965,28 +965,11 @@ Examples:
 🌱 Climate Science
 🚀 Space Technology
 
-Choose from these areas (pick 5 randomly):
-- Artificial Intelligence
-- Gene Therapy
-- Quantum Computing
-- Climate Science
-- Space Technology
-- Brain Research
-- Renewable Energy
-- Robotics Engineering
-- Materials Science
-- Digital Privacy
-- Medical Innovation
-- Virtual Reality
-- Blockchain Technology
-- Ocean Science
-- Behavioral Psychology
-
 IMPORTANT: 
 - Use EXACTLY two words after the emoji
 - NO asterisks (**) or other formatting
 - One category per line
-- Pick 5 different categories"""
+- Produce 5 different categories"""
         
         completion = client.chat.completions.create(
             model="llama-3.1-8b-instant",
