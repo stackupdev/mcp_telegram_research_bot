@@ -425,7 +425,7 @@ def get_research_prompt(topic: str, num_papers: int = 10) -> str:
 # FUNCTION CALLING INFRASTRUCTURE
 # ============================================================================
 
-# Define function schemas for MCP tools
+# Define function schemas for MCP tools (limited to core research functions)
 MCP_TOOLS = [
     {
         "type": "function",
@@ -463,57 +463,6 @@ MCP_TOOLS = [
                     }
                 },
                 "required": ["paper_id"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_topic_papers",
-            "description": "Get all papers that have been previously saved for a specific research topic. Use this to retrieve papers from a known research area.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "topic": {
-                        "type": "string",
-                        "description": "The topic name to get papers for (use exact topic names from get_available_folders)"
-                    }
-                },
-                "required": ["topic"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_available_folders",
-            "description": "List all available research topic folders that contain saved papers. Use this to see what research topics are available.",
-            "parameters": {
-                "type": "object",
-                "properties": {},
-                "required": []
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_research_prompt",
-            "description": "Generate a comprehensive research prompt for in-depth academic analysis. Use this when you want to provide structured, detailed research guidance for a topic.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "topic": {
-                        "type": "string",
-                        "description": "The research topic to generate a comprehensive prompt for"
-                    },
-                    "num_papers": {
-                        "type": "integer",
-                        "description": "Number of papers to include in the research analysis (default: 10)",
-                        "default": 10
-                    }
-                },
-                "required": ["topic"]
             }
         }
     }
@@ -964,15 +913,13 @@ def format_deepseek_thinking(text: str) -> str:
 
 def send_interactive_hints(update, response: str, tools_used: list = None):
     """
-    Send 3 direct MCP tool-specific buttons for research follow-up.
-    Provides immediate access to core research functionality.
+    Send a single Research Guide button for comprehensive research follow-up.
+    Provides access to detailed research guidance after initial search results.
     """
     user_id = update.effective_user.id
     
-    # Create 3 MCP tool-specific buttons
+    # Create single Research Guide button
     keyboard = [
-        [InlineKeyboardButton("🔍 Search Papers", callback_data=f"mcp_search_{user_id}")],
-        [InlineKeyboardButton("📁 Browse Topics", callback_data=f"mcp_topics_{user_id}")],
         [InlineKeyboardButton("🗺️ Research Guide", callback_data=f"mcp_guide_{user_id}")]
     ]
     
@@ -981,9 +928,9 @@ def send_interactive_hints(update, response: str, tools_used: list = None):
     # Create message based on tools used
     if tools_used:
         tools_text = ", ".join(tools_used)
-        message_text = f"🧠 Based on the {tools_text} results, continue your research:"
+        message_text = f"🧠 Based on the {tools_text} results, get comprehensive research guidance:"
     else:
-        message_text = "💡 Continue exploring with MCP research tools:"
+        message_text = "💡 Get detailed research guidance for deeper exploration:"
     
     # Send message with MCP tool buttons
     send_telegram_message(
@@ -1238,46 +1185,16 @@ def handle_hint_callback(update, context):
         return
     
     if callback_data.startswith('mcp_'):
-        # Handle MCP tool-specific buttons
+        # Handle Research Guide button
         parts = callback_data.split('_')
         if len(parts) >= 3:
             action = parts[1]
             user_id = int(parts[2])
             
-            # Create prompts for users to specify their research topics
-            mcp_prompts = {
-                'search': "🔍 What research topic would you like to search papers for?\n\nJust type your topic and I'll find the latest papers!",
-                'topics': "📁 Let me show you what research topics are available to explore.",
-                'guide': "🗺️ What topic would you like a comprehensive research guide for?\n\nJust type your topic and I'll provide structured research guidance!"
-            }
-            
-            prompt = mcp_prompts.get(action, "What would you like to research?")
-            
-            # Send the prompt to user
-            query.message.reply_text(prompt)
-            
-            # For 'topics', immediately trigger the MCP tool since no user input needed
-            if action == 'topics':
-                question = "What research topics are available to explore?"
-                
-                # Create context for processing
-                fake_context = type('Context', (), {})() 
-                fake_context.args = question.split()
-                
-                # Create a new update object
-                fake_update = type('Update', (), {})()  
-                fake_update.effective_user = query.from_user
-                fake_update.effective_chat = query.message.chat
-                fake_update.message = query.message
-                
-                # Get user's last model preference
-                udata = get_user_data(user_id)
-                last_model = udata.get('last_model', 'llama')
-                
-                if last_model == 'deepseek':
-                    deepseek_command(fake_update, fake_context)
-                else:
-                    llama_command(fake_update, fake_context)
+            # Only handle 'guide' action now
+            if action == 'guide':
+                prompt = "🗺️ What topic would you like a comprehensive research guide for?\n\nJust type your topic and I'll provide structured research guidance!"
+                query.message.reply_text(prompt)
         
     elif callback_data.startswith('hint_') or callback_data.startswith('onboard_'):
         parts = callback_data.split('_')
