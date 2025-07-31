@@ -1588,14 +1588,6 @@ def start(update, context):
         "🔧 Utility Commands:\n" +
         "/reset - Clear conversation history\n" +
         "/help - Show detailed help and toggle auto-research\n\n" +
-        "🚀 Ready to explore? Try asking:\n" +
-        "• \"What are the latest breakthroughs in cancer research?\"\n" +
-        "• \"How is machine learning being used in drug discovery?\"\n" +
-        "• \"Show me research on climate change mitigation\"\n" +
-        "• \"What's happening in space exploration technology?\"\n" +
-        "• \"Find studies on mental health and social media\"\n" +
-        "• \"Explain advances in renewable energy storage\"\n" +
-        "• \"What's new in robotics and automation?\"\n\n" +
         "👇 Choose your AI assistant below to get started!",
         reply_markup=reply_markup
     )
@@ -1615,11 +1607,7 @@ def help_command(update, context):
         "/prompt <topic> - Generate comprehensive research prompt\n\n" +
         "🔧 Utility Commands:\n" +
         "/reset - Clear conversation history\n" +
-        "/help - Show this help message\n\n" +
-        "✨ Example Questions:\n" +
-        "• \"What's new in machine learning research?\"\n" +
-        "• \"Find papers about quantum computing\"\n" +
-        "• \"Explain recent developments in AI safety\""
+        "/help - Show this help message"
     )
 
 def toggle_research_callback(update, context):
