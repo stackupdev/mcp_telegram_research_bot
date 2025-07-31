@@ -1561,12 +1561,22 @@ def truncate_conversation(messages, max_tokens=MAX_TOKENS):
     
     return truncated
 
-def send_telegram_message(update, text, reply_markup=None):
+def escape_markdown_v2(text):
+    """Escape special characters for Telegram MarkdownV2"""
+    if not text:
+        return text
+    # Escape special characters that can break Markdown parsing
+    special_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
+    for char in special_chars:
+        text = text.replace(char, f'\\{char}')
+    return text
+
+def send_telegram_message(update, text, reply_markup=None, use_markdown=True):
     """Split long messages into smaller chunks to avoid Telegram's 4096 character limit"""
     # Handle empty, None, or invalid text
     if not text or not isinstance(text, str) or not text.strip():
         error_msg = "⚠️ Sorry, I encountered an issue generating a response. Please try again."
-        update.message.reply_text(error_msg, reply_markup=reply_markup, parse_mode='Markdown')
+        update.message.reply_text(error_msg, reply_markup=reply_markup, parse_mode='Markdown' if use_markdown else None)
         return
     
     # Ensure text is a string and strip whitespace
@@ -1599,10 +1609,10 @@ def send_telegram_message(update, text, reply_markup=None):
     
     # Send all chunks except the last one without reply_markup
     for chunk in chunks[:-1]:
-        update.message.reply_text(chunk, parse_mode='Markdown')
+        update.message.reply_text(chunk, parse_mode='Markdown' if use_markdown else None)
     
     # Send the last chunk with reply_markup if provided
-    update.message.reply_text(chunks[-1], reply_markup=reply_markup)
+    update.message.reply_text(chunks[-1], reply_markup=reply_markup, parse_mode='Markdown' if use_markdown else None)
 
 def start(update, context):
     user_id = update.effective_user.id
@@ -1723,7 +1733,7 @@ def search_command(update, context):
         else:
             response = f"❌ No papers found for '{topic}'. Try a different research area."
         
-        send_telegram_message(update, response)
+        send_telegram_message(update, response, use_markdown=False)
         
     except Exception as e:
         send_telegram_message(update, f"❌ Error searching for papers on '{topic}': {str(e)}")
@@ -2158,8 +2168,8 @@ def message_handler(update, context):
                     send_progressive_research_update(fake_update, "search_papers", "completed", "No papers found")
                     response = f"❌ No papers found for '{text.strip()}'. Try a different research area."
                 
-                # Send the research results
-                send_telegram_message(update, response)
+                # Send the research results without Markdown to avoid parsing errors
+                send_telegram_message(update, response, use_markdown=False)
                 return
                 
             except Exception as e:
