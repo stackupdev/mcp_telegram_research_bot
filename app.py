@@ -1366,15 +1366,12 @@ def handle_hint_callback(update, context):
                     
                     smart_question = tool_questions.get(tool_name, description)
                     
-                    # Enhance the question with tool context for better LLM tool selection
-                    enhanced_question = enhance_question_with_tool_context(smart_question, tool_name)
+                    # Send the smart question
+                    query.message.reply_text(f"🧠 Smart suggestion: {smart_question}")
                     
-                    # Send the enhanced question
-                    query.message.reply_text(f"🧠 Smart suggestion: {enhanced_question}")
-                    
-                    # Create enhanced context for processing
+                    # Create context for processing
                     fake_context = type('Context', (), {})() 
-                    fake_context.args = enhanced_question.split()
+                    fake_context.args = smart_question.split()
                     
                     # Create a new update object
                     fake_update = type('Update', (), {})()  
@@ -1412,18 +1409,12 @@ def handle_hint_callback(update, context):
                 # Remove emoji prefix from the question for cleaner display
                 clean_question = question.split(' ', 1)[1] if ' ' in question else question
                 
-                # Predict which tool this question will likely trigger
-                predicted_tool = predict_next_tool_from_question(clean_question)
+                # Send the question as if the user asked it
+                query.message.reply_text(f"💬 {clean_question}")
                 
-                # Enhance the question with tool context for better LLM tool selection
-                enhanced_question = enhance_question_with_tool_context(clean_question, predicted_tool)
-                
-                # Send the enhanced question as if the user asked it
-                query.message.reply_text(f"💬 {enhanced_question}")
-                
-                # Create a fake context with the enhanced question as args
+                # Create a fake context with the question as args
                 fake_context = type('Context', (), {})() 
-                fake_context.args = enhanced_question.split()
+                fake_context.args = clean_question.split()
                 
                 # Create a new update object for the question
                 fake_update = type('Update', (), {})()  
@@ -1881,17 +1872,6 @@ def llama_command(update, context):
     q = ' '.join(context.args)
     print(f"LLAMA query from user {user_id}: {q}")
     
-    # Predict which tool this question might trigger for proactive guidance
-    predicted_tool = predict_next_tool_from_question(q)
-    
-    # Enhance the question with tool context if research is enabled
-    auto_research_enabled = udata.get('auto_research', True)
-    if auto_research_enabled and predicted_tool:
-        enhanced_q = enhance_question_with_tool_context(q, predicted_tool)
-        print(f"Enhanced query with tool context: {enhanced_q}")
-        # Use enhanced question for better tool selection
-        q = enhanced_q
-    
     # Add user message to history
     udata['llama_history'].append({"role": "user", "content": q})
     
@@ -1962,17 +1942,6 @@ def deepseek_command(update, context):
         
     q = ' '.join(context.args)
     print(f"Deepseek query from user {user_id}: {q}")
-    
-    # Predict which tool this question might trigger for proactive guidance
-    predicted_tool = predict_next_tool_from_question(q)
-    
-    # Enhance the question with tool context if research is enabled
-    auto_research_enabled = udata.get('auto_research', True)
-    if auto_research_enabled and predicted_tool:
-        enhanced_q = enhance_question_with_tool_context(q, predicted_tool)
-        print(f"Enhanced query with tool context: {enhanced_q}")
-        # Use enhanced question for better tool selection
-        q = enhanced_q
     
     # Add user message to history
     udata['deepseek_history'].append({"role": "user", "content": q})
