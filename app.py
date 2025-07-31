@@ -960,142 +960,7 @@ def format_deepseek_thinking(text: str) -> str:
     
     return formatted_text
 
-def generate_llm_follow_up_hints(conversation_context: str, last_response: str, tools_used: list = None) -> list:
-    """
-    Generate tool-aware contextual follow-up question hints using LLM intelligence.
-    Returns a list of AI-generated suggested questions optimized for MCP tool integration.
-    """
-    try:
-        client = Groq()
-        
-        # Build intelligent context about tools used and next logical steps
-        tools_context = ""
-        next_tool_suggestions = ""
-        
-        if tools_used:
-            tools_context = f"\nTools that were just executed: {', '.join(tools_used)}"
-            
-            # Map tools to logical next steps
-            tool_flow_map = {
-                'search_papers': [
-                    'extract_info (get details about specific papers)',
-                    'get_topic_papers (explore saved papers in this area)',
-                    'search_papers (search related topics)'
-                ],
-                'extract_info': [
-                    'search_papers (find similar or related papers)',
-                    'get_research_prompt (get structured research guidance)',
-                    'get_topic_papers (explore more papers in this topic)'
-                ],
-                'get_topic_papers': [
-                    'extract_info (get details about specific papers)',
-                    'search_papers (find newer papers in this area)',
-                    'get_research_prompt (get comprehensive research guidance)'
-                ],
-                'get_available_folders': [
-                    'get_topic_papers (explore papers in specific topics)',
-                    'search_papers (search for papers in interesting topics)',
-                    'get_research_prompt (get guidance for research planning)'
-                ],
-                'get_research_prompt': [
-                    'search_papers (execute the research plan)',
-                    'get_available_folders (see what topics are available)',
-                    'get_topic_papers (explore existing research collections)'
-                ]
-            }
-            
-            # Build next tool suggestions based on what was just used
-            suggested_next_tools = []
-            for tool in tools_used:
-                if tool in tool_flow_map:
-                    suggested_next_tools.extend(tool_flow_map[tool])
-            
-            if suggested_next_tools:
-                next_tool_suggestions = f"\nLogical next research steps: {', '.join(set(suggested_next_tools[:3]))}"
-        
-        # Create an enhanced prompt that considers tool integration
-        hint_prompt = f"""Based on this research conversation response, generate 3-4 intelligent follow-up questions that seamlessly integrate with the research tools available.
 
-Response that was just given:
-{last_response[:800]}...{tools_context}{next_tool_suggestions}
-
-Available research capabilities:
-- search_papers: Find new papers on any topic
-- extract_info: Get detailed info about specific papers (need ArXiv ID)
-- get_topic_papers: View previously saved papers for a topic
-- get_available_folders: See what research topics are available
-- get_research_prompt: Get structured research guidance
-
-Generate 3-4 specific, actionable follow-up questions that would:
-1. Naturally trigger the most useful research tools
-2. Build logically on what was just discovered
-3. Help users explore deeper or broader aspects
-4. Suggest practical next steps in their research journey
-
-Focus on questions that would benefit from:
-- Finding more papers (search_papers)
-- Getting paper details (extract_info)
-- Exploring related topics (get_topic_papers)
-- Comparing approaches or methodologies
-- Understanding practical applications
-- Identifying research trends or gaps
-
-Format as a simple list, one question per line, without numbering or bullets. Make each question specific to the content and designed to trigger helpful tool usage."""
-        
-        # Generate hints using LLM
-        completion = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=[
-                {"role": "system", "content": "You are a research assistant that generates intelligent follow-up questions to help users explore topics deeper. Generate specific, actionable questions that would naturally continue the research conversation."},
-                {"role": "user", "content": hint_prompt}
-            ],
-            max_tokens=200,
-            temperature=0.5
-        )
-        
-        response = completion.choices[0].message.content
-        if not response:
-            return []
-        
-        # Parse the response into individual questions with tool-aware emoji assignment
-        questions = []
-        for line in response.strip().split('\n'):
-            line = line.strip()
-            # Clean up any numbering or bullets that might have been added
-            line = re.sub(r'^[\d\-\*\•]\s*', '', line)
-            if line and len(line) > 10:  # Only include substantial questions
-                # Add tool-aware emoji based on content and likely tool usage
-                line_lower = line.lower()
-                
-                # Tool-specific emoji assignment
-                if any(word in line_lower for word in ['search', 'find', 'look for', 'papers on', 'research on']):
-                    line = f"🔍 {line}"  # search_papers likely
-                elif any(word in line_lower for word in ['details', 'more about', 'specific paper', 'paper id', 'arxiv']):
-                    line = f"📋 {line}"  # extract_info likely
-                elif any(word in line_lower for word in ['saved', 'existing', 'collection', 'topic papers']):
-                    line = f"📚 {line}"  # get_topic_papers likely
-                elif any(word in line_lower for word in ['available', 'topics', 'folders', 'what areas']):
-                    line = f"📁 {line}"  # get_available_folders likely
-                elif any(word in line_lower for word in ['guidance', 'how to research', 'research plan', 'approach']):
-                    line = f"🗺️ {line}"  # get_research_prompt likely
-                elif any(word in line_lower for word in ['compare', 'difference', 'versus', 'contrast']):
-                    line = f"⚖️ {line}"  # comparison analysis
-                elif any(word in line_lower for word in ['trend', 'latest', 'recent', 'new', 'developments']):
-                    line = f"📈 {line}"  # temporal analysis
-                elif any(word in line_lower for word in ['application', 'use', 'implement', 'practical']):
-                    line = f"🔧 {line}"  # practical applications
-                elif any(word in line_lower for word in ['methodology', 'method', 'approach', 'technique']):
-                    line = f"🔬 {line}"  # methodology focus
-                else:
-                    line = f"💡 {line}"  # general exploration
-                questions.append(line)
-        
-        return questions[:4]  # Limit to 4 questions
-        
-    except Exception as e:
-        print(f"Error generating LLM hints: {e}")
-        # Use tool-aware fallback questions based on what tools were just used
-        return generate_tool_aware_fallback_questions(tools_used or [])
 
 def send_interactive_hints(update, response: str, tools_used: list = None):
     """
@@ -1343,7 +1208,7 @@ def send_onboarding_research_suggestions(update):
     # Send message with trending research topics
     send_telegram_message(
         update,
-        "🔥 **Trending Research Topics** - Click to explore:",
+        "🔥 Trending Research Topics - Click to explore:",
         reply_markup=reply_markup
     )
     
