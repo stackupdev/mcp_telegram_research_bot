@@ -1026,16 +1026,25 @@ Seed: {timestamp_seed}"""
         if not response:
             return []
         
-        # Parse topic names from response
+        # Parse topic names from response with deduplication
         topics = []
+        seen_topics = set()
+        
         for line in response.strip().split('\n'):
             line = line.strip()
             # Remove any numbering, bullets, or quotes
             line = line.lstrip('1234567890.- *#"').rstrip('"')
+            
             if line and len(line) > 3:  # Only include substantial topic names
-                topics.append(line)
+                # Normalize for comparison (case-insensitive, remove extra spaces)
+                normalized = ' '.join(line.lower().split())
+                
+                # Only add if not already seen
+                if normalized not in seen_topics:
+                    topics.append(line)
+                    seen_topics.add(normalized)
         
-        return topics[:5]  # Limit to 5 topics
+        return topics[:5]  # Limit to 5 unique topics
         
     except Exception as e:
         print(f"Error generating onboarding terms: {e}")
@@ -1286,11 +1295,15 @@ def handle_hint_callback(update, context):
                                     pdf_url = paper_info.get('pdf_url', '')
                                     summary = paper_info.get('summary', 'No summary available')
                                     
+                                    # Truncate summary to reasonable length
+                                    if len(summary) > 200:
+                                        summary = summary[:200] + '...'
+                                    
                                     response += f"{i}. {title}\n"  # No bold formatting
                                     response += f"   Authors: {authors} ({published})\n"
                                     if pdf_url:
                                         response += f"   [📄 PDF]({pdf_url})\n"
-                                    response += f"   Summary: {summary}\n\n"  # Include full summary
+                                    response += f"   Summary: {summary}\n\n"  # Include truncated summary
                                 else:
                                     response += f"{i}. Paper ID: `{paper_id}`\n\n"
                             except Exception:
