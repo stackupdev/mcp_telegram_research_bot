@@ -1568,7 +1568,7 @@ def send_telegram_message(update, text, reply_markup=None):
     # Handle empty, None, or invalid text
     if not text or not isinstance(text, str) or not text.strip():
         error_msg = "⚠️ Sorry, I encountered an issue generating a response. Please try again."
-        update.message.reply_text(error_msg, reply_markup=reply_markup)
+        update.message.reply_text(error_msg, reply_markup=reply_markup, parse_mode='Markdown')
         return
     
     # Ensure text is a string and strip whitespace
@@ -1577,7 +1577,7 @@ def send_telegram_message(update, text, reply_markup=None):
     max_length = 4000  # Leave some buffer for safety
     
     if len(text) <= max_length:
-        update.message.reply_text(text, reply_markup=reply_markup)
+        update.message.reply_text(text, reply_markup=reply_markup, parse_mode='Markdown')
         return
     
     # Split message into chunks
@@ -1601,7 +1601,7 @@ def send_telegram_message(update, text, reply_markup=None):
     
     # Send all chunks except the last one without reply_markup
     for chunk in chunks[:-1]:
-        update.message.reply_text(chunk)
+        update.message.reply_text(chunk, parse_mode='Markdown')
     
     # Send the last chunk with reply_markup if provided
     update.message.reply_text(chunks[-1], reply_markup=reply_markup)
@@ -1970,7 +1970,7 @@ def reset_command(update, context):
     reply_markup = update_keyboard(user_id)
     send_telegram_message(
         update, 
-        f"✅ ```**Chat History Reset**```\n\n{get_conversation_status(user_id)}\n\n"
+        f"✅ **Chat History Reset**\n\n{get_conversation_status(user_id)}\n\n"
         f"Your conversation history with both LLama and Deepseek has been cleared. "
         f"Choose an AI assistant below to start a fresh conversation!",
         reply_markup=reply_markup
